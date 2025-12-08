@@ -1,0 +1,17 @@
+cache*
+.idea
+*.html
+*.pkl
+.DS_Store
+
+.env
+*__pycache__*
+*.csv
+*.hdf5
+*.tif
+*.tiff
+*.png
+*.nc4
+*.h5
+
+/data

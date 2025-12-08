@@ -1,0 +1,6 @@
+channels:
+  - conda-forge
+dependencies:
+  - pip
+  - climada>=6.0.0
+
