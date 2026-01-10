@@ -6,7 +6,7 @@ from pathlib import Path
 
 # TODO: overlay pastoral land as a way to downscale cattle (but not chicken)
 
-download_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_heads_GLW4/raw/')
+download_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_GLW4/raw/')
 overwrite = False
 
 # ------------------------------------------------------------------------------

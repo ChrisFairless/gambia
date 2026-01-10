@@ -17,8 +17,8 @@ subplots = (7, 1)
 figsize = (12, 20)
 
 country_list = ['Gambia']
-exposure_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_heads_GLW4/exp/')
-plot_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_heads_GLW4/plots/')
+exposure_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_GLW4/exp/')
+plot_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_GLW4/plots/')
 overwrite = True
 # cmap = 'viridis'
 cmap = 'magma_r'

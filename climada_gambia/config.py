@@ -73,7 +73,7 @@ CONFIG = {
                 }
             }
         },
-        "livestock_heads": {
+        "livestock": {
             "GLW4": {
                 "present": {
                     "files": [
@@ -82,16 +82,6 @@ CONFIG = {
                         "glw4_goats_GMB_5as.hdf5",
                         "glw4_pigs_GMB_5as.hdf5",
                         "glw4_sheep_GMB_5as.hdf5"
-                    ],
-                    "enabled": True
-                }
-            }
-        },
-        "livestock_USD": {
-            "GLW4": {
-                "present": {
-                    "files": [
-                        "glw4_USD_all_GMB_5as.hdf5"
                     ],
                     "enabled": True
                 }
@@ -161,7 +151,9 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
-                    "thresholds": ['affected'],
+                    "thresholds": {
+                        'affected': 0.1
+                    },
                     "enabled": True
                 },
                 {
@@ -171,7 +163,12 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
-                    "thresholds": ['affected', 'damaged', 'destroyed'],
+                    "thresholds": {
+                        'affected': 0.1,
+                        'damaged': 0.5,
+                        'destroyed': 0.8
+                    },
+                    "scale_impf": 2,
                     "enabled": True
                 },
                 {
@@ -181,7 +178,11 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
-                    "thresholds": ['affected', 'damaged', 'destroyed'],
+                    "thresholds": {
+                        'affected': 0.1,
+                        'damaged': 0.5,
+                        'destroyed': 0.8
+                    },
                     "enabled": False
                 },
                 {
@@ -191,25 +192,34 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_agriculture_uncalibrated.csv",
-                    "thresholds": ['affected', 'damaged'],
+                    "thresholds": {
+                        'affected': 0.1,
+                        'damaged': 0.5
+                    },
+                    "scale_impf": 1.5,
                     "enabled": True
                 },
+                # {
+                #     "exposure_type": "livestock",
+                #     "exposure_source": "GLW4",
+                #     "impact_type": "affected",
+                #     "calibrated": False,
+                #     "dir": "impact_functions/uncalibrated/",
+                #     "files": "impf_river_flood_livestock_uncalibrated.csv",
+                #     "enabled": True
+                # },
                 {
-                    "exposure_type": "livestock_heads",
-                    "exposure_source": "GLW4",
-                    "impact_type": "affected",
-                    "calibrated": False,
-                    "dir": "impact_functions/uncalibrated/",
-                    "files": "impf_river_flood_livestock_uncalibrated.csv",
-                    "enabled": True
-                },
-                {
-                    "exposure_type": "livestock_USD",
+                    "exposure_type": "livestock",
                     "exposure_source": "GLW4",
                     "impact_type": "economic_loss",
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_livestock_uncalibrated.csv",
+                    "thresholds": {
+                        'affected': 0.1,
+                        'damaged': 0.5
+                    },
+                    "scale_impf": 0.5,
                     "enabled": True
                 },
                 {
@@ -219,6 +229,7 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_manufacturing_uncalibrated.csv",
+                    "scale_impf": 2,
                     "enabled": True
                 },
                 {
@@ -228,6 +239,7 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_energy_uncalibrated.csv",
+                    "scale_impf": 2,
                     "enabled": True
                 },
                 {
@@ -237,6 +249,7 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_services_uncalibrated.csv",
+                    "scale_impf": 2,
                     "enabled": True
                 },
                 {
@@ -255,6 +268,7 @@ CONFIG = {
                     "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
+                    "scale_impf": 2,
                     "enabled": True
                 },
             ]

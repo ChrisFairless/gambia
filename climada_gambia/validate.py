@@ -17,10 +17,6 @@ from climada_gambia import utils_config
 
 # CONF_PATH = "/Users/chrisfairless/Library/CloudStorage/OneDrive-Personal/Projects/UNU/gambia2025/climada_gambia/conf.json"
 
-HAZARD_MAP = {
-    "flood": "FL"
-}
-
 def validate_impacts(impf_dict, data_dir, output_dir, overwrite):
     hazard_type = impf_dict["hazard_type"]
     hazard_source = impf_dict["hazard_source"]
@@ -29,8 +25,8 @@ def validate_impacts(impf_dict, data_dir, output_dir, overwrite):
     
     haz_filepath_list = utils_config.gather_hazard_metadata(hazard_type, hazard_source, flatten=True)
     exp = None
-    impf_set = impfset_from_csv(impf_dict["file_path"], hazard_type=hazard_type)
-    impf_id = impf_set.get_ids(haz_type=HAZARD_MAP[hazard_type])
+    impf_set = impfset_from_csv(impf_dict["file_path"], hazard_type=impf_dict["hazard_abbr"])
+    impf_id = impf_set.get_ids(haz_type=impf_dict["hazard_abbr"])
     if len(impf_id) > 1:
         raise ValueError("Multiple impact function IDs found in impact function set. I wasn't expecting this.")
     impf_id = impf_id[0]

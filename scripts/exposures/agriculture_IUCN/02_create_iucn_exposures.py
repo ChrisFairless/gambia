@@ -62,7 +62,7 @@ for land_use, info in exposures_dict.items():
 
     attrs = {
         'description': f'IUCN land cover fraction for {land_use}',
-        'value_unit': 'area (dimensionless)'
+        'value_unit': 'area (km 2)'
         }
 
     for country in country_list:

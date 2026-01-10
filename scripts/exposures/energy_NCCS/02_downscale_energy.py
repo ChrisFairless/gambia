@@ -19,7 +19,8 @@ country_list = ['Gambia']  # Set lists of countries to combine the exposures
 overwrite = True
 write_csv_too = True
 
-threshold = 0.14  # set to none to estimate automatically. Relies on a few grid points being present
+threshold = 0.14  # distance threshold for matching points. Set to none to estimate automatically with CLIMADA.
+# Relies on a few grid points being present
 # Underlying data is 0.1 degree resolution so we set it so root 2 x 0.1
 
 # TODO expand this to let you glue a few countries together as with manufacturing

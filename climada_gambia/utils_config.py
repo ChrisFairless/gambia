@@ -1,5 +1,10 @@
 from pathlib import Path
 from climada_gambia.config import CONFIG
+from climada_gambia.utils_total_exposed_value import get_total_exposed_value
+
+HAZARD_MAP = {
+    "flood": "FL"
+}
 
 def gather_impact_function_metadata(filter={}):
     impf_list = []
@@ -10,6 +15,7 @@ def gather_impact_function_metadata(filter={}):
             if not impf['enabled']:
                 continue
             impf['hazard_type'] = hazard_type
+            impf['hazard_abbr'] = HAZARD_MAP[impf_dict["hazard_type"]]
             impf['hazard_source'] = hazard_source
             impf['hazard_dir'] = Path(CONFIG["data_dir"], "hazard", f'{impf["hazard_type"]}_{impf["hazard_source"]}', 'haz')
             impf['exposure_node'] = CONFIG.get("exposures", {}).get(impf['exposure_type'], {}).get(impf['exposure_source'], {}).get("present", {})  # for now
@@ -18,6 +24,10 @@ def gather_impact_function_metadata(filter={}):
             impf['calibrated_string'] = "calibrated" if impf['calibrated'] else "uncalibrated"
             impf['impact_dir'] = Path(CONFIG["output_dir"], impf["calibrated_string"], "impacts", f"{impf['exposure_type']}_{impf['exposure_source']}")
             impf['impf_file_path'] = Path(CONFIG["data_dir"], impf.get("dir"), impf.get("files"))
+            impf['exposure_node']['total_exposed_value'] = get_total_exposed_value(impf['exposure_type'], usd=False)
+            impf['exposure_node']['total_exposed_USD'] = get_total_exposed_value(impf['exposure_type'], usd=True)
+            if 'thresholds' not in impf.keys():
+                impf['thresholds'] = {}
 
             append = True
             for key in filter.keys():

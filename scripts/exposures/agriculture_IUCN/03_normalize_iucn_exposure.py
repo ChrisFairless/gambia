@@ -7,22 +7,20 @@ import pycountry
 from pathlib import Path
 
 from climada.entity import Exposures
+from climada_gambia.utils_total_exposed_value import get_total_exposed_value
 
 country_list = ['Gambia']
 data_dir = '/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/agriculture_IUCN/'
-
-# TODO move this into a data file
-# figures from wikipedia plus some guesses: look into this more carefully
-target_values = {
-    'agriculture': 0.15 * 2.77e9,  # 15% of GDP
-    'arable': 0.15 * 2.77e9
-}
-# Alternately normalise to total area which is 2427 km2
 
 # ------------------------------------------------------------------------------
 
 exp_dir = Path(data_dir, 'exp')
 
+total_exposed = get_total_exposed_value(exposure_type='agriculture', usd=True)
+target_values = {
+    'agriculture': total_exposed,
+    'arable': total_exposed
+}
 
 for land_use, target in target_values.items():
     print(f'Renormalising land use: {land_use}')

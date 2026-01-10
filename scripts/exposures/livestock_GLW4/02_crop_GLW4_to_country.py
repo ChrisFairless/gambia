@@ -9,7 +9,7 @@ import climada.util.coordinates as u_coords
 from climada.entity import Exposures
 
 country_list = ['Gambia']
-data_dir = '/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_heads_GLW4/'
+data_dir = '/Users/chrisfairless/Data/UNU/gambia2025/inputs/exposures/livestock_GLW4/'
 
 # ------------------------------------------------------------------------------
 
