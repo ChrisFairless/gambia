@@ -17,6 +17,7 @@ from climada_gambia.utils_observations import load_observations
 from climada_gambia.config import CONFIG
 from climada_gambia import utils_config
 from climada_gambia.analyse_impacts import compare_obs, get_curves, analyse_exceedance
+from climada_gambia.impact_function_manager import ImpactFunctionManager
 
 logging.getLogger("climada").setLevel(logging.WARNING)
 
@@ -48,12 +49,9 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
     else:
         scale_impf = 1
 
-    impf_set = impfset_from_csv(impf_dict["impf_file_path"], hazard_abbr=hazard_abbr, scale_impf=scale_impf)
-    impf_id = impf_set.get_ids(haz_type=hazard_abbr)
-    if len(impf_id) > 1:
-        raise ValueError("Multiple impact function IDs found in impact function set. I wasn't expecting this.")
-    impf_id = impf_id[0]
-    impf = impf_set.get_func(haz_type=hazard_abbr, fun_id=impf_id)
+    # Load impact function using ImpactFunctionManager
+    impf_manager = ImpactFunctionManager(impf_dict["impf_file_path"], hazard_abbr)
+    impf = impf_manager.load_impf(scale_mdd=scale_impf)
 
     all_observations = load_observations(
         exposure_type=exposure_type,
@@ -134,7 +132,7 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
                     if i_type not in impf_dict["thresholds"].keys():
                         continue
                     threshold = impf_dict["thresholds"][i_type]
-                    impf_step_set = step_impfset_from_threshold(impf, threshold, hazard_abbr)
+                    impf_step_set = impf_manager.create_step_function(impf, threshold)
                     imp = ImpactCalc(exp_temp, impf_step_set, haz).impact(save_mat=True, assign_centroids=False)
                 else:
                     if i_type not in valid_thresholds:
@@ -158,16 +156,6 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
     return impf_dict
 
 
-def step_impfset_from_threshold(impf, threshold, hazard_abbr):
-    threshold_intensity = np.interp(threshold, impf.calc_mdr(impf.intensity), impf.intensity)
-    impf_step = ImpactFunc.from_step_impf(
-        intensity = (0, threshold_intensity, 100),
-        haz_type = hazard_abbr,
-        mdd = (0, 1),
-        paa = (1, 1),
-        impf_id = 1
-    )
-    return ImpactFuncSet([impf_step])
 
 
 def guess_threshold(threshold_name, impf_dict, impf, haz, exp, observations, rp_level):
@@ -200,7 +188,7 @@ def guess_threshold(threshold_name, impf_dict, impf, haz, exp, observations, rp_
 
 
 def evaluate_one_guess(impf_dict, impf, haz, exp, observations, threshold_name, rp_level, guesses, scores, next_guess):
-    impf_step_set = step_impfset_from_threshold(impf, next_guess, impf_dict['hazard_abbr'])
+    impf_step_set = ImpactFunctionManager.create_step_function(impf, next_guess)
     imp = ImpactCalc(exp, impf_step_set, haz).impact(save_mat=True, assign_centroids=False)
     total_exposed = exp.value.sum()
     curves = get_curves(scenario="present", impf_dict=impf_dict, imp=imp, impact_type=threshold_name, haz_filepath=None, total_exposed=total_exposed)
@@ -273,21 +261,6 @@ def get_one_exposure(filepath, impf_id=None):
     exp.set_gdf(gdf)
     return exp
 
-
-def impfset_from_csv(filepath, hazard_abbr, scale_impf=1):
-    df = pd.read_csv(filepath)
-    impf_list = []
-    for id in df['id'].unique():
-        df_id = df[df['id'] == id]
-        impf = ImpactFunc(
-            haz_type = hazard_abbr,
-            id = id,
-            intensity = df_id['intensity'],
-            mdd = df_id['mdd'] * scale_impf,
-            paa = df_id['paa']
-        )
-        impf_list.append(impf)
-    return ImpactFuncSet(impf_list)
 
 
 def main(overwrite, scale_impacts):

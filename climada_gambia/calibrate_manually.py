@@ -9,8 +9,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from climada_gambia import utils_config
-from climada_gambia.calculate_impacts import calculate_impacts, impfset_from_csv
 from climada_gambia.analyse_impacts import analyse_exceedance
+from climada_gambia.impact_function_manager import ImpactFunctionManager
 from config import CONFIG
 
 
@@ -57,23 +57,17 @@ def simulate(impf_dict, parameters, scale_impacts):
     # Adjust for this run
     print("Adjusting the impact function")
     hazard_abbr = impf_dict["hazard_abbr"]
-    impf_set = impfset_from_csv(impf_dict['impf_file_path'], hazard_abbr=impf_dict["hazard_abbr"])
-    impf_id = impf_set.get_ids(haz_type=hazard_abbr)
-    if len(impf_id) > 1:
-        raise ValueError("Multiple impact function IDs found in impact function set. I wasn't expecting this.")
-    impf_id = impf_id[0]
-    impf = impf_set.get_func(haz_type=hazard_abbr, fun_id=impf_id)
-    df = pd.DataFrame(dict(
-        intensity = impf.intensity * parameters["x_scale"],
-        paa = impf.paa,
-        mdd = impf.mdd * parameters["y_scale"],
-        id = 1
-    ))
-    impf_dict['calibrated'] = True
     
     temp_impf_file_path = Path(working_dir, 'temp_impf.csv')
+    # Use ImpactFunctionManager to load and scale the impact function
+    manager = ImpactFunctionManager(impf_dict['impf_file_path'], hazard_abbr)
+    impf = manager.load_impf()
+    impf_scaled = manager.apply_scaling(impf, parameters["x_scale"], parameters["y_scale"])
+    
+    impf_dict['analysis_name'] = "calibration_temp"
+    
     impf_dict['impf_file_path'] = temp_impf_file_path
-    df.to_csv(temp_impf_file_path)
+    manager.impf_to_csv(impf_scaled, temp_impf_file_path)
 
     if "thresholds" in impf_dict:
         for sub_impact, thresh in parameters['thresholds'].items():
