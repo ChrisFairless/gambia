@@ -3,6 +3,7 @@ cache*
 *.html
 *.pkl
 .DS_Store
+*.egg-info/
 
 .env
 *__pycache__*
@@ -15,3 +16,4 @@ cache*
 *.h5
 
 /data
+plans/
