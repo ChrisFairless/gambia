@@ -18,6 +18,7 @@ from climada_gambia.config import CONFIG
 from climada_gambia import utils_config
 from climada_gambia.analyse_impacts import compare_obs, get_curves, analyse_exceedance
 from climada_gambia.impact_function_manager import ImpactFunctionManager
+from climada_gambia.metadata_impact import MetadataImpact
 
 logging.getLogger("climada").setLevel(logging.WARNING)
 
@@ -28,16 +29,29 @@ max_iters = 16
 
 valid_thresholds = ["affected", "damaged", "destroyed"]
 
-def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_impacts=False, usd=False, write_extras=True, output_dir=None, overwrite=True):
-    impf_dict = copy.deepcopy(impf_dict_in)
+def calculate_impacts(impf_dict_in, scenario, fit_thresholds, scale_impacts=False, write_extras=True, overwrite=True):
+    """Calculate impacts for a given impact calculation configuration.
+    
+    Args:
+        impf_dict_in: MetadataImpact instance containing impact calculation configuration information
+        scenario: Scenario name (e.g., 'present', 'RCP4.5_2050')
+        fit_thresholds: Return period level for threshold fitting
+        scale_impacts: Whether to scale impacts
+        write_extras: Whether to write additional outputs
+        overwrite: Whether to overwrite existing files
+    """
+    # Deep copy the underlying dict to avoid mutating the original
+    impf_dict = MetadataImpact(copy.deepcopy(impf_dict_in.to_dict()))
+    
     hazard_type = impf_dict["hazard_type"]
     hazard_source = impf_dict["hazard_source"]
     exposure_type = impf_dict["exposure_type"]
     exposure_source = impf_dict["exposure_source"]
     impact_type = impf_dict["impact_type"]
     hazard_abbr = impf_dict["hazard_abbr"]
-    os.makedirs(impf_dict["impact_dir"], exist_ok=True)
-    output_dir = output_dir if output_dir else impf_dict["impact_dir"]
+    
+    output_dir = impf_dict["impact_dir"]
+    os.makedirs(output_dir, exist_ok=True)
 
     haz_filepath_dict = utils_config.gather_hazard_metadata(hazard_type, hazard_source, flatten=False)
     if scenario is not None:
@@ -52,12 +66,14 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
     # Load impact function using ImpactFunctionManager
     impf_manager = ImpactFunctionManager(impf_dict["impf_file_path"], hazard_abbr)
     impf = impf_manager.load_impf(scale_mdd=scale_impf)
+    impf_set = ImpactFuncSet([impf])
+    impf_id = impf.id
 
     all_observations = load_observations(
         exposure_type=exposure_type,
         impact_type=None,
-        get_uncalibrated=True,
-        get_supplementary_sources=True
+        load_exceedance=True,
+        load_supplementary_sources=True
     )
     impact_type_list = list(set([impf_dict["impact_type"]]) | set(all_observations["impact_type"]) | set(impf_dict["thresholds"].keys()))
 
@@ -73,9 +89,9 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
                 print(f'... processing hazard file {i+1} / {len(haz_filepath_list)}')
 
             impact_path_test_list = [
-                Path(output_dir, f'impact_{t}_{exposure_type}_{exposure_source}_{hazard_source}_{Path(haz_filepath).stem}.hdf5')
+                impf_dict.impact_file_path(Path(haz_filepath).stem, t)
                 for t in impact_type_list
-                ]
+            ]
             if np.all([os.path.exists(fp) for fp in impact_path_test_list]) and not overwrite:
                 print(f'... all impact files exist already, skipping')
                 continue
@@ -91,7 +107,7 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
 
             # Calculate main impact – economic value or displacement
             exp_temp = exp.copy()
-            if impf_dict['impact_type'] == 'economic_loss':
+            if impf_dict["impact_type"] == 'economic_loss':
                 total_exposed_value = get_total_exposed_value(exposure_type, usd=True)
                 exp_temp.value_unit = 'USD'
             else:
@@ -100,7 +116,7 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
             exp_temp = scale_exposures(exp_temp, total_exposed_value)
             imp = ImpactCalc(exp_temp, impf_set, haz).impact(save_mat=True, assign_centroids=False)
             
-            impact_path = Path(output_dir, f'impact_{impact_type}_{exposure_type}_{exposure_source}_{hazard_source}_{Path(haz_filepath).stem}.hdf5')
+            impact_path = impf_dict.impact_file_path(Path(haz_filepath).stem, impact_type)
             print(f'... writing impact to {impact_path}')
             imp.write_hdf5(impact_path)
             impact_path_list.append(impact_path)
@@ -120,8 +136,8 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
                     observations = load_observations(
                         exposure_type=exposure_type,
                         impact_type=i_type,
-                        get_uncalibrated=True,
-                        get_supplementary_sources=True
+                        load_exceedance=True,
+                        load_supplementary_sources=True
                     )
                     if observations.shape[0] > 0:
                         parameter_search = True
@@ -140,14 +156,14 @@ def calculate_impacts(impf_dict_in, scenario, data_dir, fit_thresholds, scale_im
                     threshold, imp, _, _ = guess_threshold(i_type, impf_dict, impf, haz, exp, observations, rp_level=fit_thresholds)
                     impf_dict["thresholds"][i_type] = threshold
 
-                impact_path = Path(output_dir, f'impact_{i_type}_{exposure_type}_{exposure_source}_{hazard_source}_{Path(haz_filepath).stem}.hdf5')
+                impact_path = impf_dict.impact_file_path(Path(haz_filepath).stem, i_type)
                 print(f'... writing impact to {impact_path}')
                 imp.write_hdf5(impact_path)
                 impact_path_list.append(impact_path)
 
             if scenario=="present":
                 print('...Calculating score')  # Since total score is different from score for fitting single thresholds
-                _, scores = analyse_exceedance(impf_dict, data_dir, plot_dir=output_dir, scenario="present", write_extras=write_extras, overwrite=True)
+                _, scores = analyse_exceedance(impf_dict, scenario="present", write_extras=write_extras, overwrite=True)
                 impf_dict["scores"] = scores if scores.shape[0] > 0 else None
             else:
                 impf_dict["scores"] = None
@@ -278,37 +294,41 @@ def main(overwrite, scale_impacts):
         raise FileNotFoundError(f'Please create an output directory at {output_dir}')
 
     # Gather all impact calculations:
-    impf_list = utils_config.gather_impact_function_metadata()
+    impf_list = utils_config.gather_impact_calculation_metadata()
 
     # Exposure files tend to be larger than hazard files, so we load each exposure once, then loop through hazards
-    for impf_dict in impf_list:
-        print("-----------------------------------------------------")
-        print(f"Calculating impacts for {impf_dict['exposure_type']}: {impf_dict['exposure_source']} - {impf_dict['hazard_type']}: {impf_dict['hazard_source']}")
+    for analysis_name in set(conf["default_analysis_name"], conf["uncalibrated_analysis_name"]):
+        print(f"=== Running analysis: {analysis_name} ===")
 
-        if not impf_dict["exposure_node"]:
-            print(' MISSING: No exposure configuration found as specified in impact functions. Skipping')
-            continue
+        for impf_dict_analysis in impf_list:
+            impf_dict = copy.deepcopy(impf_dict_analysis)
+            impf_dict['analysis_name'] = analysis_name
 
-        if not impf_dict["hazard_node"]:
-            print(' MISSING: No hazard configuration found as specified in impact functions. Skipping')
-            continue
+            print("-----------------------------------------------------")
+            print(f"Calculating impacts for {impf_dict['exposure_type']}: {impf_dict['exposure_source']} - {impf_dict['hazard_type']}: {impf_dict['hazard_source']}")
 
-        try:
-            _ = calculate_impacts(
-                impf_dict,
-                scenario=None,
-                data_dir=data_dir,
-                scale_impacts=scale_impacts,
-                fit_thresholds=None,
-                write_extras=True,
-                output_dir=None,
-                overwrite=overwrite
-            )
-        except Exception as e:
-            print(' ERROR: Failed to calculate impacts')
-            print(f'{e}')
-            raise Exception(e)
-            # continue
+            if not impf_dict["exposure_node"]:
+                print(' MISSING: No exposure configuration found as specified in impact functions. Skipping')
+                continue
+
+            if not impf_dict["hazard_node"]:
+                print(' MISSING: No hazard configuration found as specified in impact functions. Skipping')
+                continue
+
+            try:
+                _ = calculate_impacts(
+                    impf_dict,
+                    scenario=None,
+                    scale_impacts=scale_impacts,
+                    fit_thresholds=None,
+                    write_extras=True,
+                    overwrite=overwrite
+                )
+            except Exception as e:
+                print(' ERROR: Failed to calculate impacts')
+                print(f'{e}')
+                raise Exception(e)
+                # continue
 
 
 if __name__ == "__main__":

@@ -14,10 +14,23 @@ from climada.util.coordinates import estimate_matching_threshold
 from climada_gambia.check_inputs import check_node, check_enabled_node
 from climada_gambia.config import CONFIG
 from climada_gambia import utils_config
+from climada_gambia.metadata_impact import MetadataImpact
+from climada_gambia.utils_exposures import get_exposures
+from climada_gambia.impact_function_manager import impfset_from_csv
+
 
 # CONF_PATH = "/Users/chrisfairless/Library/CloudStorage/OneDrive-Personal/Projects/UNU/gambia2025/climada_gambia/conf.json"
 
 def validate_impacts(impf_dict, data_dir, output_dir, overwrite):
+    """Validate impact calculations.
+    
+    Args:
+        impf_dict: MetadataImpact instance or dict
+        data_dir: Base data directory
+        output_dir: Output directory
+        overwrite: Whether to overwrite existing files
+    """
+    impf_dict = MetadataImpact(impf_dict)
     hazard_type = impf_dict["hazard_type"]
     hazard_source = impf_dict["hazard_source"]
     exposure_type = impf_dict["exposure_type"]
@@ -36,9 +49,9 @@ def validate_impacts(impf_dict, data_dir, output_dir, overwrite):
         if len(haz_filepath_list) > 1:
             print(f'... processing hazard file {i+1} / {len(haz_filepath_list)}')
 
-        output_impact_dir = Path(output_dir, impf_dict["calibrated_string"], "impacts", f"{exposure_type}_{exposure_source}")
+        output_impact_dir = impf_dict["impact_dir"]
         os.makedirs(output_impact_dir, exist_ok=True)
-        output_path = Path(output_impact_dir, f'impact_{exposure_type}_{exposure_source}_{hazard_source}_{Path(haz_filepath).stem}.hdf5')
+        output_path = impf_dict.get_output_impact_path(haz_filepath)
         if os.path.exists(output_path) and not overwrite:
             print(f'... file exists already, skipping')
             continue
@@ -72,7 +85,7 @@ def main(overwrite=False):
         raise FileNotFoundError(f'Please create an output directory at {output_dir}')
 
     # Gather all impact calculations:
-    impf_list = utils_config.gather_impact_function_metadata()
+    impf_list = utils_config.gather_impact_calculation_metadata()
 
     # Exposure files tend to be larger than hazard files, so we load each exposure once, then loop through hazards
     for impf_dict in impf_list:

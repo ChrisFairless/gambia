@@ -1,43 +1,39 @@
 from pathlib import Path
 from climada_gambia.config import CONFIG
-from climada_gambia.utils_total_exposed_value import get_total_exposed_value
+from climada_gambia.metadata_impact import MetadataImpact
 
-HAZARD_MAP = {
-    "flood": "FL"
-}
-
-def gather_impact_function_metadata(filter={}):
+def gather_impact_calculation_metadata(filter={}):
+    """Gather impact function metadata and return as MetadataImpact instances.
+    
+    Args:
+        filter: Dictionary of key-value pairs to filter impact functions
+        
+    Returns:
+        List of MetadataImpact instances
+    """
     impf_list = []
     for impf_dict in CONFIG.get("impact_functions"):
         hazard_type = impf_dict.get("hazard_type")
         hazard_source = impf_dict.get("hazard_source")
-        for impf in impf_dict.get("impfs"):
-            if not impf['enabled']:
+        for impf_raw in impf_dict.get("impfs"):
+            if not impf_raw.get('enabled', True):
                 continue
-            impf['hazard_type'] = hazard_type
-            impf['hazard_abbr'] = HAZARD_MAP[impf_dict["hazard_type"]]
-            impf['hazard_source'] = hazard_source
-            impf['hazard_dir'] = Path(CONFIG["data_dir"], "hazard", f'{impf["hazard_type"]}_{impf["hazard_source"]}', 'haz')
-            impf['exposure_node'] = CONFIG.get("exposures", {}).get(impf['exposure_type'], {}).get(impf['exposure_source'], {}).get("present", {})  # for now
-            impf['exposure_dir'] = Path(CONFIG["data_dir"], "exposures", f'{impf["exposure_type"]}_{impf["exposure_source"]}', 'exp')
-            impf['hazard_node'] = CONFIG.get("hazard", {}).get(hazard_type, {}).get(hazard_source, {})
-            impf['calibrated_string'] = "calibrated" if impf['calibrated'] else "uncalibrated"
-            impf['impact_dir'] = Path(CONFIG["output_dir"], impf["calibrated_string"], "impacts", f"{impf['exposure_type']}_{impf['exposure_source']}")
-            impf['impf_file_path'] = Path(CONFIG["data_dir"], impf.get("dir"), impf.get("files"))
-            impf['exposure_node']['total_exposed_value'] = get_total_exposed_value(impf['exposure_type'], usd=False)
-            impf['exposure_node']['total_exposed_USD'] = get_total_exposed_value(impf['exposure_type'], usd=True)
-            if 'thresholds' not in impf.keys():
-                impf['thresholds'] = {}
-
+            
+            # Create enriched MetadataImpact instance from config
+            impf = MetadataImpact.from_config_impf(CONFIG, hazard_type, hazard_source, impf_raw)
+            
+            # Apply filters
             append = True
-            for key in filter.keys():
+            for key, value in filter.items():
                 if key not in impf.keys():
-                    raise ValueError(f"Filter key {key} not found in impf_dict keys: {list(impf.keys())}")
-                if impf[key] != filter[key]:
-                    append = False     
+                    raise ValueError(f"Filter key {key} not found in impf keys: {list(impf.keys())}")
+                if impf[key] != value:
+                    append = False
+                    break
                
             if append:
                 impf_list.append(impf)
+    
     return impf_list
 
 

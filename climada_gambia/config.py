@@ -1,7 +1,8 @@
 CONFIG = {
     "data_dir": "/Users/chrisfairless/Data/UNU/gambia2025/inputs",
     "output_dir": "/Users/chrisfairless/Data/UNU/gambia2025/outputs",
-    "do_calibrated": False,
+    "default_analysis_name": "uncalibrated",
+    "uncalibrated_analysis_name": "uncalibrated",  # Used for calculating uncalibrated exceedance curves
     "hazard": {
         # hazards are stored in the input data folder / hazard / f'{hazard_type}_{hazard_source}' / haz
         # but can be overridden by setting a "dir" value
@@ -148,7 +149,6 @@ CONFIG = {
                     "exposure_type": "population",
                     "exposure_source": "GHS",
                     "impact_type": "displaced",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
                     "thresholds": {
@@ -160,7 +160,6 @@ CONFIG = {
                     "exposure_type": "housing",
                     "exposure_source": "GHS",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
                     "thresholds": {

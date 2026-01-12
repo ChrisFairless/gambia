@@ -3,35 +3,41 @@ import copy
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from typing import Optional
 
 from climada_gambia.config import CONFIG
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
+from climada_gambia.paths import PathBuilder
 
 observations_path = Path('/Users/chrisfairless/Library/CloudStorage/OneDrive-Personal/Projects/UNU/gambia2025/data/observations_curated.xlsx')
-rp_data_path = Path(CONFIG["output_dir"], "uncalibrated", "exceedance", "exceedance.csv")
 
 OBSERVATIONS_FULL = pd.read_excel(observations_path, sheet_name='event_observations')
 HIERARCHY_FULL = pd.read_excel(observations_path, sheet_name='hierarchy')
-if os.path.exists(rp_data_path):
-    EXCEEDANCE_FULL = pd.read_csv(rp_data_path)
-else:
-    EXCEEDANCE_FULL = None
 
 valid_impact_types = ['economic_loss', 'displaced', 'affected', 'damaged', 'destroyed']
 
 
 def load_observations(
-        exposure_type,
-        impact_type = None,
-        get_uncalibrated=True,
-        get_supplementary_sources=True
+        exposure_type: str,
+        impact_type: Optional[str] = None,
+        load_exceedance: bool = True,
+        load_supplementary_sources: bool =True
     ):
+    """Load observations for a given exposure type.
+    Args:
+        exposure_type: Exposure type to load observations for
+        impact_type: Impact type to filter observations for
+        load_exceedance: Whether to load uncalibrated exceedance curves as additional obervations (when specified in hierarchy).
+            Name of analysis to load exceedance data from is taken from CONFIG["uncalibrated_analysis_name"] but specified in the 
+            hierarchy file as simply 'uncalibrated'.
+        load_supplementary_sources: Whether to load supplementary observation sources (when specified in hierarchy)
+    Returns:
+        DataFrame of observations
+    """
+
     hazard_type = 'flood'  # for now
-    uncalibrated_exceedance = None
     hierarchy = load_hierarchy(exposure_type)
     hierarchy = hierarchy[hierarchy['weight'] != 0]
-    if EXCEEDANCE_FULL is None:
-        get_uncalibrated = False
 
     exposure_observations_list = []
 
@@ -70,7 +76,7 @@ def load_observations(
             impact_subset = calculate_observation_fractions(impact_subset, total_exposed_value=total_exposed_value)
             exposure_observations_list.append(impact_subset)
 
-    if get_uncalibrated and 'uncalibrated' in hierarchy['data_source'].values:
+    if load_exceedance and 'uncalibrated' in hierarchy['data_source'].values:
         if impact_type is not None:
             i_type = impact_type
         else:
@@ -80,13 +86,27 @@ def load_observations(
             row = hierarchy[hierarchy['data_source'] == 'uncalibrated']
             assert row.shape[0] == 1, f'Multiple uncalibrated entries found in hierarchy for exposure_type={exposure_type}, impact_type={i_type}'
             uncalibrated_exposure_source = row['uncalibrated_exposure_source'].values[0]
-            uncalibrated_exceedance = pd.read_csv(rp_data_path)
-            uncalibrated_df = uncalibrated_exceedance[
-                (uncalibrated_exceedance['scenario'] == 'present') &
-                (uncalibrated_exceedance['exposure_type'] == exposure_type) &
-                (uncalibrated_exceedance['exposure_source'] == uncalibrated_exposure_source) &
-                # (uncalibrated_exceedance['hazard_type'] == hazard_type) &
-                (uncalibrated_exceedance['impact_type'] == i_type)
+            
+            # Build path using MetadataCalibration
+            from climada_gambia.paths import MetadataCalibration
+            path_builder = MetadataCalibration(
+                config=CONFIG,
+                analysis_name=CONFIG["uncalibrated_analysis_name"]
+            )
+            exceedance_dir = path_builder.exceedance_output_dir()
+            exceedance_path = Path(exceedance_dir, "exceedance.csv")
+            
+            if not os.path.exists(exceedance_path):
+                print(f"WARNING: Exceedance data not found at {exceedance_path} for analysis: you can ignore this if this is the first time you have run calculate_impacts.")
+                return pd.DataFrame()
+
+            exceedance_df = pd.read_csv(exceedance_path)
+            uncalibrated_df = exceedance_df[
+                (exceedance_df['scenario'] == 'present') &
+                (exceedance_df['exposure_type'] == exposure_type) &
+                (exceedance_df['exposure_source'] == uncalibrated_exposure_source) &
+                # (exceedance_df['hazard_type'] == hazard_type) &
+                (exceedance_df['impact_type'] == i_type)
             ]
             if uncalibrated_df.shape[0] == 0:
                 raise ValueError(f'No uncalibrated exceedance data found for filter exposure_type={exposure_type}, exposure_source={uncalibrated_exposure_source}, impact_type={i_type}')
@@ -131,7 +151,7 @@ def load_observations(
                 exposure_unit = 'USD'
 
             total_exposed_value = get_total_exposed_value(supplementary_source, usd=(exposure_unit=='USD'))
-            supplement = load_observations(exposure_type=supplementary_source, impact_type=None, get_uncalibrated=get_uncalibrated, get_supplementary_sources=True)
+            supplement = load_observations(exposure_type=supplementary_source, impact_type=None, load_exceedance=load_exceedance, load_supplementary_sources=True)
             if supplement.shape[0] == 0:
                 continue
             

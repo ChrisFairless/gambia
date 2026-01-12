@@ -8,18 +8,15 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 
-from climada.entity import ImpactFuncSet
-
 from climada_gambia import utils_config
-from climada_gambia.calculate_impacts import calculate_impacts, impfset_from_csv
+from climada_gambia.calculate_impacts import calculate_impacts
 from climada_gambia.utils_observations import load_observations
 from climada_gambia.config import CONFIG
 from climada_gambia.impact_function_manager import ImpactFunctionManager
+from climada_gambia.paths import MetadataCalibration
+from climada_gambia.metadata_impact import MetadataImpact
 
-
-# working_dir = Path(CONFIG["output_dir"], "temp_calibration", "housing_search")
-# working_dir = Path(CONFIG["output_dir"], "temp_calibration", "livestock_search")
-working_dir = Path(CONFIG["output_dir"], "temp_calibration", "manufacturing_search")
+analysis_name = "temp_calibration/manufacturing_search"
 
 parameters = {
     'x_scale': np.arange(0.3, 1.6, 0.3),
@@ -30,7 +27,6 @@ parameters = {
         'destroyed': 0.6
     }
 }
-
 
 impf_filter = {
     'hazard_type': 'flood',
@@ -45,6 +41,9 @@ impf_filter = {
     'exposure_source': 'NCCS',
     'impact_type': 'economic_loss'
 }
+
+# =====================================================
+
 
 def simulate(impf_dict, parameters, scale_impacts):
     data_dir = Path(CONFIG["data_dir"])
@@ -110,33 +109,38 @@ def simulate(impf_dict, parameters, scale_impacts):
         manager.impf_to_csv(impf_scaled, temp_impf_file_path)
         impf_dict_optimised['impf_file_path'] = temp_impf_file_path
 
-        out_dir = Path(working_dir, f'optimised_{rp_level}')
+        out_dir = path_builder.calibration_output_subdir(working_dir, f'optimised_{rp_level}')
+        impf_dict_optimised['impact_dir'] = out_dir
         os.makedirs(out_dir, exist_ok=True)
         _ = calculate_impacts(
             impf_dict_optimised,
             scenario="present",
-            data_dir=CONFIG["data_dir"],
             scale_impacts=scale_impacts,
-            usd=(impf_dict_optimised["impact_type"] == "economic_loss"),
             fit_thresholds=None,
             write_extras=True,
-            output_dir=out_dir,
             overwrite=True
         )
 
 
 def run_one_parameter_combo(impf_dict_in, parameters, scale_impacts):
-    impf_dict = copy.deepcopy(impf_dict_in)
+    """Run calibration for one parameter combination.
+    
+    Args:
+        impf_dict_in: MetadataImpact instance
+        parameters: Dictionary of calibration parameters
+        scale_impacts: Whether to scale impacts
+    """
+    impf_dict = MetadataImpact(copy.deepcopy(impf_dict_in.to_dict()))
     assert "thresholds" in impf_dict.keys()
-    temp_impf_file_path = Path(working_dir, 'temp_impf.csv')
-    manager = ImpactFunctionManager(impf_dict['impf_file_path'], impf_dict['hazard_abbr'])
+    temp_impf_file_path = path_builder.calibration_temp_impf_path(working_dir)
+    
+    manager = ImpactFunctionManager(impf_dict["impf_file_path"], impf_dict["hazard_abbr"])
     impf = manager.load_impf()
     impf_scaled = manager.apply_scaling(impf, parameters["x_scale"], parameters["y_scale"])
     manager.impf_to_csv(impf_scaled, temp_impf_file_path)
 
     impf_dict['impact_dir'] = working_dir
     impf_dict['impf_file_path'] = temp_impf_file_path
-    impf_dict['calibrated'] = True
 
     for sub_impact, thresh in parameters['thresholds'].items():
         if sub_impact in impf_dict["thresholds"].keys():
@@ -148,12 +152,9 @@ def run_one_parameter_combo(impf_dict_in, parameters, scale_impacts):
         impf_dict_out = calculate_impacts(
             impf_dict,
             scenario="present",
-            data_dir=CONFIG["data_dir"],
             scale_impacts=scale_impacts,
             fit_thresholds=rp_level,
-            usd=(impf_dict["impact_type"] == "economic_loss"),
             write_extras=False,
-            output_dir=working_dir,
             overwrite=True
         )
         if impf_dict_out["scores"] is not None:
@@ -175,13 +176,20 @@ def run_one_parameter_combo(impf_dict_in, parameters, scale_impacts):
 
 
 def main(overwrite, scale_impacts):
-    if not os.path.exists(working_dir.parent):
-        raise FileNotFoundError(f'Please create an output directory at {working_dir.parent}')
+    path_builder = MetadataCalibration(
+        config=CONFIG,
+        analysis_name=analysis_name
+    )
+    working_dir = path_builder.calibration_working_dir(analysis_name)
+
+    if not os.path.exists(working_dir.base_output_dir):
+        raise FileNotFoundError(f'Please create an output directory at {working_dir.base_output_dir}')
     os.makedirs(working_dir, exist_ok=True)
 
-    impf_dict_list = utils_config.gather_impact_function_metadata(filter=impf_filter)
+    impf_dict_list = utils_config.gather_impact_calculation_metadata(filter=impf_filter)
     assert len(impf_dict_list) == 1, f'Expected one impact function for filter {impf_filter}, found {len(impf_dict_list)}'
     impf_dict = impf_dict_list[0]
+    impf_dict["analsis_name"] = analysis_name
 
     simulate(impf_dict, parameters)
     print("Done")

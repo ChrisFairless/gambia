@@ -10,11 +10,12 @@ from matplotlib import pyplot as plt
 from climada.entity import Exposures
 from climada.engine import Impact
 
-from check_inputs import check_node, check_enabled_node
+from climada_gambia.check_inputs import check_node, check_enabled_node
+from climada_gambia.paths import MetadataCalibration
 from climada_gambia import utils_config
 from climada_gambia import utils_observations
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
-from config import CONFIG
+from climada_gambia.config import CONFIG
 
 
 base_figsize = (16, 7)
@@ -49,14 +50,22 @@ COLOURS2 = ['teal', 'coral', 'gold', 'lightgrey', 'lightblue', 'lightgreen', 'vi
 cost_function = lambda modelled, target: (modelled - target)**2
 
 
-def analyse_exceedance(impf_dict, data_dir, plot_dir, scenario=None, write_extras=True, overwrite=True):
-    calibrated_string = "calibrated" if impf_dict["calibrated"] else "uncalibrated"
+def analyse_exceedance(impf_dict, scenario=None, write_extras=True, overwrite=True):
+    """Analyse exceedance curves for impacts.
+    
+    Args:
+        impf_dict: MetadataImpact instance containing impact function configuration
+        scenario: Scenario name or None for all scenarios
+        write_extras: Whether to write additional outputs
+        overwrite: Whether to overwrite existing files
+    """
     exposure_type = impf_dict["exposure_type"]
     exposure_source = impf_dict["exposure_source"]
     hazard_source = impf_dict["hazard_source"]
     impact_type = impf_dict["impact_type"]
     impact_dir = impf_dict["impact_dir"]
-    impf_dict["calibrated"] = True
+    data_dir = impf_dict["data_dir"]
+    plot_dir = impf_dict["plot_dir"]
     impact_type_list = [impf_dict["impact_type"]] + list(impf_dict["thresholds"].keys())
     figsize = (base_figsize[0], base_figsize[1] * len(impact_type_list))
 
@@ -106,17 +115,19 @@ def analyse_exceedance(impf_dict, data_dir, plot_dir, scenario=None, write_extra
 
     # print("NOT EVEN LOADING OBSERVATIONS!!")
     observations = utils_observations.load_observations(
-        exposure_type=impf_dict['exposure_type'],
+        exposure_type=impf_dict["exposure_type"],
         impact_type=None,
-        get_uncalibrated=impf_dict["calibrated"],
-        get_supplementary_sources=True
+        load_exceedance=True,
+        load_supplementary_sources=True
     )
 
     if write_extras:
-        exceedance_plot_path = Path(plot_dir, f"exceedance_{impact_type}_{impf_dict['hazard_source']}_{exposure_source}_{exposure_type}.png")
-        exceedance_plot_path_zoom = Path(plot_dir, f"exceedance_{impact_type}_{impf_dict['hazard_source']}_{exposure_source}_{exposure_type}_zoom.png")
-        exceedance_plot_path_zoom_obs = Path(plot_dir, f"exceedance_{impact_type}_{impf_dict['hazard_source']}_{exposure_source}_{exposure_type}_zoom_obs.png")
-        exceedance_plot_path_zoom_obs_fraction = Path(plot_dir, f"exceedance_{impact_type}_{impf_dict['hazard_source']}_{exposure_source}_{exposure_type}_zoom_obs_fraction.png")
+        plot_dir = impf_dict["plot_dir"]
+        
+        exceedance_plot_path = impf_dict.exceedance_plot_path(impact_type)
+        exceedance_plot_path_zoom = impf_dict.exceedance_plot_path(impact_type, zoom="zoom")
+        exceedance_plot_path_zoom_obs = impf_dict.exceedance_plot_path(impact_type, zoom="zoom_obs")
+        exceedance_plot_path_zoom_obs_fraction = impf_dict.exceedance_plot_path(impact_type, zoom="zoom_obs_fraction")
             
         if os.path.exists(exceedance_plot_path) and not overwrite:
             print('... plot already exists, just extracting exceedance values')
@@ -399,62 +410,61 @@ def main(overwrite=False):
     if not os.path.exists(output_base_dir):
         raise FileNotFoundError(f'Please create an output directory at {output_base_dir}')
 
-    for calibrated_string in ["calibrated", "uncalibrated"]:
-        print("======================================================")
-        print(f"Working on {calibrated_string} data")
-        output_dir = Path(output_base_dir, calibrated_string, 'exceedance')
-        plot_dir = Path(output_dir, 'plots')
-        csv_dir = Path(output_dir)
-        csv_path = Path(csv_dir, "exceedance.csv")
-        os.makedirs(csv_dir, exist_ok=True)
+    analysis_name = CONFIG["default_analysis_name"]
+    print("======================================================")
+    print(f"Working on {analysis_name} data")
+    
+    impf_list = utils_config.gather_impact_calculation_metadata()
+
+    os.makedirs(csv_dir, exist_ok=True)
 
 
-        # Gather all impact calculations:
-        impf_list = utils_config.gather_impact_function_metadata(filter={"calibrated_string": calibrated_string})
-        all_rp_data = []
+    # Gather all impact calculations:
+    all_rp_data = []
 
-        for impf_dict in impf_list:
-            print("-----------------------------------------------------")
-            print(f"Visualising impacts for {impf_dict['exposure_type']}: {impf_dict['exposure_source']} - {impf_dict['hazard_type']}: {impf_dict['hazard_source']}")
+    for impf_dict in impf_list:
+        print("-----------------------------------------------------")
+        print(f"Visualising impacts for {impf_dict['exposure_type']}: {impf_dict['exposure_source']} - {impf_dict['hazard_type']}: {impf_dict['hazard_source']}")
 
-            if not impf_dict["exposure_node"]:
-                print(' MISSING: No exposure configuration found as specified in impact functions. Skipping')
-                continue
+        if not impf_dict["exposure_node"]:
+            print(' MISSING: No exposure configuration found as specified in impact functions. Skipping')
+            continue
 
-            if not impf_dict["hazard_node"]:
-                print(' MISSING: No hazard configuration found as specified in impact functions. Skipping')
-                continue
+        if not impf_dict["hazard_node"]:
+            print(' MISSING: No hazard configuration found as specified in impact functions. Skipping')
+            continue
 
-            try:
-                this_rp_data, _ = analyse_exceedance(
-                    impf_dict,
-                    data_dir=data_dir,
-                    plot_dir=plot_dir,
-                    scenario=None,
-                    write_extras=True,
-                    overwrite=overwrite
-                )
-                all_rp_data.append(this_rp_data)
-            except Exception as e:
-                print(f" ERROR: Failed to visualise exceedance curves impacts for {impf_dict['hazard_type']}: {impf_dict['hazard_source']} – {impf_dict['exposure_type']}: {impf_dict['exposure_source']}")
-                print(f'{e}')
-                raise e
-                continue
-        
-        
-        if len(all_rp_data) > 0:
-            print("Writing output CSV")
-            all_rp_data = pd.concat(all_rp_data, ignore_index=True)
-            all_rp_data.to_csv(csv_path, index=False)
+        csv_path = impf_dict.exceedance_csv_path  # same for all impact types actually
 
-            print("Generating sectoral comparison plots")
-            sectoral_plot_path = Path(plot_dir, f"exceedance_sectoral_percentage.png")
-            sectoral_plot_path_zoom = Path(plot_dir, f"exceedance_sectoral_percentage_zoom.png")
-            plot_sectoral_exceedances(all_rp_data, sectoral_plot_path, (18, 8), rp_max=None)
-            plot_sectoral_exceedances(all_rp_data, sectoral_plot_path_zoom, (18, 8), rp_max=100)
+        try:
+            this_rp_data, _ = analyse_exceedance(
+                impf_dict,
+                data_dir=data_dir,
+                plot_dir=plot_dir,
+                scenario=None,
+                write_extras=True,
+                overwrite=overwrite
+            )
+            all_rp_data.append(this_rp_data)
+        except Exception as e:
+            print(f" ERROR: Failed to visualise exceedance curves impacts for {impf_dict['hazard_type']}: {impf_dict['hazard_source']} – {impf_dict['exposure_type']}: {impf_dict['exposure_source']}")
+            print(f'{e}')
+            raise e
+            continue
+    
+    
+    if len(all_rp_data) > 0:
+        print("Writing output CSV")
+        all_rp_data = pd.concat(all_rp_data, ignore_index=True)
+        all_rp_data.to_csv(csv_path, index=False)
 
-        else:
-            print(f"No data found for calibration status {calibrated_string}")
+        print("Generating sectoral comparison plots")
+        sectoral_plot_path = Path(plot_dir, f"exceedance_sectoral_percentage.png")
+        sectoral_plot_path_zoom = Path(plot_dir, f"exceedance_sectoral_percentage_zoom.png")
+        plot_sectoral_exceedances(all_rp_data, sectoral_plot_path, (18, 8), rp_max=None)
+        plot_sectoral_exceedances(all_rp_data, sectoral_plot_path_zoom, (18, 8), rp_max=100)
+    else:
+        print(f"No data found for analysis {analysis_name}")
 
 
 if __name__ == "__main__":
