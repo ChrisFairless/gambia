@@ -64,16 +64,11 @@ def analyse_exceedance(impf_dict, scenario=None, write_extras=True, overwrite=Tr
     exposure_source = impf_dict["exposure_source"]
     hazard_source = impf_dict["hazard_source"]
     impact_type = impf_dict["impact_type"]
-    impact_dir = impf_dict["impact_dir"]
-    data_dir = impf_dict["data_dir"]
-    plot_dir = impf_dict["plot_dir"]
+    impact_dir = impf_dict.impact_output_dir(create=True)
+    data_dir = impf_dict.data_dir()
+    plot_dir = impf_dict.plot_dir(create=write_extras)
     impact_type_list = [impf_dict["impact_type"]] + list(impf_dict["thresholds"].keys())
     figsize = (base_figsize[0], base_figsize[1] * len(impact_type_list))
-
-    if write_extras:
-        if not os.path.exists(plot_dir.parent.parent):
-            raise FileNotFoundError(f'Something is wrong with the directory structure. Not found: {plot_dir.parent.parent}')
-        os.makedirs(plot_dir, exist_ok=True)
 
     # exposure_files = impf_dict['exposure_node']['files']
     # exposure_files = exposure_files if isinstance(exposure_files, list) else [exposure_files]
@@ -123,7 +118,7 @@ def analyse_exceedance(impf_dict, scenario=None, write_extras=True, overwrite=Tr
     )
 
     if write_extras:
-        plot_dir = impf_dict["plot_dir"]
+        plot_dir = impf_dict.plot_dir()
         
         exceedance_plot_path = impf_dict.exceedance_plot_path(impact_type)
         exceedance_plot_path_zoom = impf_dict.exceedance_plot_path(impact_type, zoom="zoom")
@@ -359,7 +354,7 @@ def compare_obs(impf_dict, curves_all, observations_all):
     all_obs['weighted_cost_lower'] = all_obs['weight'] * all_obs['cost_lower']
     all_obs['weighted_cost_mid'] = all_obs['weight'] * all_obs['cost_mid']
     all_obs['weighted_cost_upper'] = all_obs['weight'] * all_obs['cost_upper']
-    all_obs.to_csv(Path(impf_dict["impact_dir"], 'deleteme_testing_analysis_obs.csv'))
+    all_obs.to_csv(Path(impf_dict.impact_output_dir(), 'deleteme_testing_analysis_obs.csv'))
     
     trimmed_obs = all_obs[['impact_type', 'weighted_cost_lower', 'weighted_cost_mid', 'weighted_cost_upper']]
     scores = trimmed_obs.groupby('impact_type')[['weighted_cost_lower', 'weighted_cost_mid', 'weighted_cost_upper']].agg(lambda x: np.sqrt(sum(x)))
@@ -411,17 +406,14 @@ def main(analysis_name, overwrite=False):
     if not os.path.exists(output_base_dir):
         raise FileNotFoundError(f'Please create an output directory at {output_base_dir}')
 
-    analysis_name = analysis_name
     print("======================================================")
     print(f"Working on {analysis_name} data")
     
     impf_list = utils_config.gather_impact_calculation_metadata()
 
-    os.makedirs(csv_dir, exist_ok=True)
-
-
     # Gather all impact calculations:
     all_rp_data = []
+    plot_dir = None
 
     for impf_dict in impf_list:
         print("-----------------------------------------------------")
@@ -435,7 +427,9 @@ def main(analysis_name, overwrite=False):
             print(' MISSING: No hazard configuration found as specified in impact functions. Skipping')
             continue
 
-        csv_path = impf_dict.exceedance_csv_path  # same for all impact types actually
+        csv_path = impf_dict.exceedance_csv_path()  # same for all impact types actually
+        if plot_dir is None:
+            plot_dir = impf_dict.plot_dir(create=True)
 
         try:
             this_rp_data, _ = analyse_exceedance(

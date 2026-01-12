@@ -25,10 +25,9 @@ class MetadataImpact:
         # From config.py impact_functions
         'dir', 'files', 'thresholds', 'scale_impf', 'enabled',
         # Added programmatically
-        'analysis_name', 'hazard_abbr', 'hazard_dir', 'exposure_dir', 'exposure_node',
-        'hazard_node', 'impact_dir', 'impf_file_path',
+        'analysis_name', 'hazard_abbr', 'exposure_node', 'hazard_node',
         # Added during calculation/analysis
-        'scores'
+        'scores', 'impact_files'
     }
     
     # All allowed fields
@@ -65,15 +64,6 @@ class MetadataImpact:
         # Add hazard metadata
         impf['hazard_type'] = hazard_type
         impf['hazard_source'] = hazard_source
-        
-        # Create instance temporarily to access path methods
-        temp_instance = cls(impf)
-        
-        # Add computed paths using the instance properties
-        impf['hazard_dir'] = temp_instance.hazard_dir
-        impf['exposure_dir'] = temp_instance.exposure_dir
-        impf['impact_dir'] = temp_instance.impact_output_dir
-        impf['impf_file_path'] = temp_instance.impact_function_path
         
         # Add config nodes
         impf['exposure_node'] = CONFIG.get("exposures", {}).get(
@@ -146,6 +136,26 @@ class MetadataImpact:
     def keys(self):
         """Return keys."""
         return self._data.keys()
+    
+    def _ensure_directory(self, path: Path) -> Path:
+        """Ensure directory exists, checking parent directory first.
+        
+        Args:
+            path: Path to directory to create
+            
+        Returns:
+            The path that was created
+            
+        Raises:
+            FileNotFoundError: If parent directory does not exist
+        """
+        if not path.parent.exists():
+            raise FileNotFoundError(
+                f"Parent directory does not exist: {path.parent}. "
+                f"Cannot create {path}"
+            )
+        path.mkdir(exist_ok=True)
+        return path
     
     @property
     def hazard_type(self) -> str:
@@ -226,87 +236,195 @@ class MetadataImpact:
         """Configuration node for this exposure from CONFIG."""
         return self._data.get("exposure_node")
     
-    @property
-    def data_dir(self) -> Path:
-        """Base data directory from CONFIG."""
+    # Path construction methods:
+    def data_dir(self, create: bool = False) -> Path:
+        """Base data directory from CONFIG.
+        Returns:
+            Path to data directory
+        """
         return Path(CONFIG["data_dir"])
 
-    @property
-    def hazard_dir(self) -> Path:
-        """Directory containing hazard files.
-        
-        Returns stored path if available, otherwise computes it from CONFIG.
+    def base_output_dir(self) -> Path:
+        """Base output directory from CONFIG.
+        Returns:
+            Path to output directory
         """
-        stored = self._data.get("hazard_dir")
-        if stored:
-            return stored
-        
-        base_data_dir = Path(CONFIG["data_dir"])
-        return Path(base_data_dir, "hazard", 
-                   f'{self.hazard_type}_{self.hazard_source}', 'haz')
-    
-    @property
-    def exposure_dir(self) -> Path:
-        """Directory containing exposure files.
-        
-        Returns stored path if available, otherwise computes it from CONFIG.
-        """
-        stored = self._data.get("exposure_dir")
-        if stored:
-            return stored
-        
-        base_data_dir = Path(CONFIG["data_dir"])
-        return Path(base_data_dir, "exposures", 
-                   f'{self.exposure_type}_{self.exposure_source}', 'exp')
+        return Path(CONFIG["output_dir"])
 
-    @property
-    def impact_file_path(self, hazard_file_stem: str, impact_type: str) -> Path:
+    def hazard_dir(self, create: bool = False) -> Path:
+        """Directory containing hazard files.
+        Returns:
+            Path to hazard directory (computed from CONFIG)
+        """
+        base_data_dir = self.data_dir()
+        path = Path(base_data_dir, "hazard", 
+                    f'{self.hazard_type}_{self.hazard_source}', 'haz')
+        return path
+    
+    def exposure_dir(self, create: bool = False) -> Path:
+        """Directory containing exposure files.
+        Returns:
+            Path to exposure directory (computed from CONFIG)
+        """
+        base_data_dir = self.data_dir()
+        path = Path(base_data_dir, "exposures", 
+                    f'{self.exposure_type}_{self.exposure_source}', 'exp')
+        return path
+    
+    def impact_function_dir(self, create: bool = False) -> Path:
+        """Directory containing impact function files.
+        
+        Args:
+            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+            
+        Returns:
+            Path to impact function directory
+        """
+        base_data_dir = self.data_dir()
+        impf_dir = self._data.get("dir")
+        if not impf_dir:
+            raise ValueError(
+                "Cannot construct impact_function_dir: missing 'dir' parameter in metadata"
+            )
+        path = Path(base_data_dir, impf_dir)
+        
+        if create:
+            if "/" in impf_dir:
+                self._ensure_directory(path.parent)
+            self._ensure_directory(path)
+        return path
+
+    def impact_function_path(self, create: bool = False) -> Path:
+        """Path to impact function CSV file.
+        
+        Args:
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+            
+        Returns:
+            Path to impact function file
+        """
+        # Construct from impf_dir and impf_files
+        impf_dir = self.impact_function_dir(create=create)
+        impf_files = self._data.get("files")
+        if not impf_files:
+            raise ValueError(
+                "Cannot construct impact_function_path: missing 'files' in metadata"
+            )
+        
+        # Handle case where files might be a list (take first)
+        if isinstance(impf_files, list):
+            impf_file = impf_files[0]
+        else:
+            impf_file = impf_files
+        path = Path(impf_dir, impf_file)
+        
+        return path
+
+    def impact_output_dir(self, create: bool = False) -> Path:
+        """Directory for impact calculation outputs.
+        
+        Args:
+            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+            
+        Returns:
+            Path to impact output directory
+        """
+        path = Path(
+            self.base_output_dir(),
+            self.analysis_name,
+            "impacts",
+            f"{self.exposure_type}_{self.exposure_source}"
+        )
+        
+        if create:
+            self._ensure_directory(path)
+        return path
+
+    def impact_file_path(self, hazard_file_stem: str, impact_type: str, create: bool = False) -> Path:
         """Get full path for single impact HDF5 file.
         
         Args:
             hazard_file_stem: Stem of the hazard filename (without extension)
             impact_type: Type of impact being calculated
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
             
         Returns:
             Full path to impact HDF5 file
         """
-        output_dir = self.impact_output_dir
+        output_dir = self.impact_output_dir(create=create)
         filename = (f'impact_{impact_type}_{self.exposure_type}_'
                    f'{self.exposure_source}_{self.hazard_source}_{hazard_file_stem}.hdf5')
         return Path(output_dir, filename)
     
-    @property
-    def exceedance_output_dir(self) -> Path:
-        """Get directory for exceedance curve outputs."""
-        return Path(self.base_output_dir, self.analysis_name, "exceedance")
+    def exceedance_output_dir(self, create: bool = False) -> Path:
+        """Get directory for exceedance curve outputs.
+        
+        Args:
+            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+            
+        Returns:
+            Path to exceedance output directory
+        """
+        path = Path(self.base_output_dir(), self.analysis_name, "exceedance")
+        if create:
+            self._ensure_directory(path)
+        return path
 
-    @property
-    def exceedance_csv_path(self) -> Path:
-        """Get path for exceedance curve CSV file."""
+    def exceedance_csv_path(self, create: bool = False) -> Path:
+        """Get path for exceedance curve CSV file.
+        
+        Args:
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+            
+        Returns:
+            Path to exceedance CSV file
+        """
+        output_dir = self.exceedance_output_dir(create=create)
         base_name = "exceedance.csv"
-        return Path(self.exceedance_output_dir, base_name)
+        return Path(output_dir, base_name)
     
-    @property
-    def exceedance_plot_dir(self) -> Path:
-        """Get directory for exceedance curve plots."""
-        return Path(self.exceedance_output_dir(), "plots")
+    def exceedance_plot_dir(self, create: bool = False) -> Path:
+        """Get directory for exceedance curve plots.
+        
+        Args:
+            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+            
+        Returns:
+            Path to exceedance plot directory
+        """
+        path = Path(self.exceedance_output_dir(create=create), "plots")
+        if create:
+            self._ensure_directory(path)
+        return path
+    
+    def plot_dir(self, create: bool = False) -> Path:
+        """Get directory for plots (alias for exceedance_plot_dir for backwards compatibility).
+        
+        Args:
+            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+            
+        Returns:
+            Path to plot directory
+        """
+        return self.exceedance_plot_dir(create=create)
 
-    @property
-    def exceedance_plot_path(self, impact_type: str, zoom: str = None) -> Path:
+    def exceedance_plot_path(self, impact_type: str, zoom: str = None, create: bool = False) -> Path:
         """Get path for exceedance curve plot PNG.
         
         Args:
             impact_type: Type of impact (e.g., 'economic_loss', 'affected')
             zoom: Optional zoom suffix ('zoom', 'zoom_obs', 'zoom_obs_fraction')
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
         
         Returns:
-            Path to exceedance plot PNG file (filename only, not full path)
+            Path to exceedance plot PNG file
         """
+        plot_dir = self.exceedance_plot_dir(create=create)
         base_name = (f"exceedance_{impact_type}_{self.hazard_source}_"
                     f"{self.exposure_source}_{self.exposure_type}")
         if zoom:
             base_name = f"{base_name}_{zoom}"
-        return Path(self.exceedance_plot_dir, f"{base_name}.png")
+        return Path(plot_dir, f"{base_name}.png")
         
     def to_dict(self) -> dict:
         """Return underlying dictionary."""

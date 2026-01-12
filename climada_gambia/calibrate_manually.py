@@ -75,7 +75,7 @@ def simulate(impf_dict, parameters, scale_impacts):
     hazard_abbr = impf_dict["hazard_abbr"]
     
     # Use ImpactFunctionManager to load and scale the impact function
-    manager = ImpactFunctionManager(impf_dict["impf_file_path"], hazard_abbr)
+    manager = ImpactFunctionManager(impf_dict.impact_function_path(), hazard_abbr)
     impf = manager.load_impf()
     impf_scaled = manager.apply_scaling(impf, parameters["x_scale"], parameters["y_scale"])
         
@@ -117,7 +117,7 @@ def simulate(impf_dict, parameters, scale_impacts):
                 write_extras=True,
                 overwrite=True
             )
-            _, scores = analyse_exceedance(impf_dict_thresh, data_dir, output_dir, scenario="present", write_extras=True, overwrite=True)
+            _, scores = analyse_exceedance(impf_dict_thresh, scenario="present", write_extras=True, overwrite=True)
             print(f"SCORES: (rp_level {fit_thresholds})")
             print(scores)            
 

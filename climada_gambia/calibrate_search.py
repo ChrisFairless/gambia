@@ -103,7 +103,7 @@ def simulate(impf_dict, parameters, scale_impacts):
         impf_dict_optimised['thresholds'] = params["thresholds"]
 
         temp_impf_file_path = Path(working_dir, f'optimal_impf_{rp_level}.csv')
-        manager = ImpactFunctionManager(impf_dict_optimised['impf_file_path'], impf_dict_optimised['hazard_abbr'])
+        manager = ImpactFunctionManager(impf_dict_optimised.impact_function_path(), impf_dict_optimised['hazard_abbr'])
         impf = manager.load_impf()
         impf_scaled = manager.apply_scaling(impf, params["x_scale"], params["y_scale"])
         manager.impf_to_csv(impf_scaled, temp_impf_file_path)
@@ -134,7 +134,7 @@ def run_one_parameter_combo(impf_dict_in, parameters, scale_impacts):
     assert "thresholds" in impf_dict.keys()
     temp_impf_file_path = path_builder.calibration_temp_impf_path(working_dir)
     
-    manager = ImpactFunctionManager(impf_dict["impf_file_path"], impf_dict["hazard_abbr"])
+    manager = ImpactFunctionManager(impf_dict.impact_function_path(), impf_dict["hazard_abbr"])
     impf = manager.load_impf()
     impf_scaled = manager.apply_scaling(impf, parameters["x_scale"], parameters["y_scale"])
     manager.impf_to_csv(impf_scaled, temp_impf_file_path)
@@ -182,8 +182,8 @@ def main(overwrite, scale_impacts):
     )
     working_dir = path_builder.calibration_working_dir(analysis_name)
 
-    if not os.path.exists(working_dir.base_output_dir):
-        raise FileNotFoundError(f'Please create an output directory at {working_dir.base_output_dir}')
+    if not os.path.exists(path_builder.base_output_dir):
+        raise FileNotFoundError(f'Please create an output directory at {path_builder.base_output_dir}')
     os.makedirs(working_dir, exist_ok=True)
 
     impf_dict_list = utils_config.gather_impact_calculation_metadata(filter=impf_filter)

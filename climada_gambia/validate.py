@@ -49,15 +49,14 @@ def validate_impacts(impf_dict, data_dir, output_dir, overwrite):
         if len(haz_filepath_list) > 1:
             print(f'... processing hazard file {i+1} / {len(haz_filepath_list)}')
 
-        output_impact_dir = impf_dict["impact_dir"]
-        os.makedirs(output_impact_dir, exist_ok=True)
+        output_impact_dir = impf_dict.impact_output_dir(create=True)
         output_path = impf_dict.get_output_impact_path(haz_filepath)
         if os.path.exists(output_path) and not overwrite:
             print(f'... file exists already, skipping')
             continue
 
         haz = Hazard.from_hdf5(haz_filepath)
-        exp = exp if exp else get_exposures(impf_dict["exposure_node"], impf_dict["exposure_dir"], scenario="present", impf_id=impf_id)
+        exp = exp if exp else get_exposures(impf_dict["exposure_node"], impf_dict.exposure_dir(), scenario="present", impf_id=impf_id)
 
         # TO DO come back and work on this: we probably want to downscale the low-res exposures!!
         threshold_exp = estimate_matching_threshold(haz.centroids.coord)

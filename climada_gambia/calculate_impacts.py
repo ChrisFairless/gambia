@@ -49,9 +49,6 @@ def calculate_impacts(impf_dict_in, scenario, fit_thresholds, scale_impacts=Fals
     exposure_source = impf_dict["exposure_source"]
     impact_type = impf_dict["impact_type"]
     hazard_abbr = impf_dict["hazard_abbr"]
-    
-    output_dir = impf_dict["impact_dir"]
-    os.makedirs(output_dir, exist_ok=True)
 
     haz_filepath_dict = utils_config.gather_hazard_metadata(hazard_type, hazard_source, flatten=False)
     if scenario is not None:
@@ -64,7 +61,7 @@ def calculate_impacts(impf_dict_in, scenario, fit_thresholds, scale_impacts=Fals
         scale_impf = 1
 
     # Load impact function using ImpactFunctionManager
-    impf_manager = ImpactFunctionManager(impf_dict["impf_file_path"], hazard_abbr)
+    impf_manager = ImpactFunctionManager(impf_dict.impact_function_path(), hazard_abbr)
     impf = impf_manager.load_impf(scale_mdd=scale_impf)
     impf_set = ImpactFuncSet([impf])
     impf_id = impf.id
@@ -172,8 +169,6 @@ def calculate_impacts(impf_dict_in, scenario, fit_thresholds, scale_impacts=Fals
     return impf_dict
 
 
-
-
 def guess_threshold(threshold_name, impf_dict, impf, haz, exp, observations, rp_level):
     count = 1
     guesses = []
@@ -256,7 +251,6 @@ def get_exposures(exposure_node, exp_dir, scenario="present", impf_id=None):
         exp_files = [exp_files]
     exp = Exposures.concat([get_one_exposure(Path(exp_dir, fn), impf_id) for fn in exp_files])
     return exp
-
 
 
 def get_one_exposure(filepath, impf_id=None):
