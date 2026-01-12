@@ -17,6 +17,7 @@ from climada_gambia import utils_observations
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
 from climada_gambia.config import CONFIG
 
+analysis_name = "uncalibrated"
 
 base_figsize = (16, 7)
 
@@ -403,14 +404,14 @@ def plot_sectoral_exceedances(all_rp_data, sector_comparison_plot_path, figsize,
     plt.close(axis.figure)
 
 
-def main(overwrite=False):
+def main(analysis_name, overwrite=False):
     conf = CONFIG
     data_dir = Path(conf.get("data_dir"))
     output_base_dir = Path(conf.get("output_dir"))
     if not os.path.exists(output_base_dir):
         raise FileNotFoundError(f'Please create an output directory at {output_base_dir}')
 
-    analysis_name = CONFIG["default_analysis_name"]
+    analysis_name = analysis_name
     print("======================================================")
     print(f"Working on {analysis_name} data")
     
@@ -468,4 +469,4 @@ def main(overwrite=False):
 
 
 if __name__ == "__main__":
-    main(overwrite=overwrite)
+    main(analysis_name=analysis_name, overwrite=overwrite)
