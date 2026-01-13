@@ -3,10 +3,10 @@ from climada_gambia.config import CONFIG
 from climada_gambia.metadata_impact import MetadataImpact
 
 def gather_impact_calculation_metadata(filter={}):
-    """Gather impact function metadata and return as MetadataImpact instances.
+    """Gather impact calculation metadata and return as MetadataImpact instances.
     
     Args:
-        filter: Dictionary of key-value pairs to filter impact functions
+        filter: Dictionary of key-value pairs to filter impact calculations to matching values
         
     Returns:
         List of MetadataImpact instances

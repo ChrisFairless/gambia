@@ -13,7 +13,7 @@ from climada_gambia.calculate_impacts import calculate_impacts
 from climada_gambia.utils_observations import load_observations
 from climada_gambia.config import CONFIG
 from climada_gambia.impact_function_manager import ImpactFunctionManager
-from climada_gambia.paths import MetadataCalibration
+from climada_gambia.metadata_calibration import MetadataCalibration
 from climada_gambia.metadata_impact import MetadataImpact
 
 analysis_name = "temp_calibration/manufacturing_search"

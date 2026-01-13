@@ -12,7 +12,7 @@ from climada_gambia import utils_config
 from climada_gambia.calculate_impacts import calculate_impacts
 from climada_gambia.analyse_impacts import analyse_exceedance
 from climada_gambia.impact_function_manager import ImpactFunctionManager
-from climada_gambia.paths import MetadataCalibration
+from climada_gambia.metadata_calibration import MetadataCalibration
 from config import CONFIG
 
 

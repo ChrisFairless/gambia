@@ -7,7 +7,6 @@ from typing import Optional
 
 from climada_gambia.config import CONFIG
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
-from climada_gambia.paths import PathBuilder
 
 observations_path = Path('/Users/chrisfairless/Library/CloudStorage/OneDrive-Personal/Projects/UNU/gambia2025/data/observations_curated.xlsx')
 

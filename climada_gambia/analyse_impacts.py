@@ -11,7 +11,7 @@ from climada.entity import Exposures
 from climada.engine import Impact
 
 from climada_gambia.check_inputs import check_node, check_enabled_node
-from climada_gambia.paths import MetadataCalibration
+from climada_gambia.metadata_calibration import MetadataCalibration
 from climada_gambia import utils_config
 from climada_gambia import utils_observations
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
@@ -64,9 +64,7 @@ def analyse_exceedance(impf_dict, scenario=None, write_extras=True, overwrite=Tr
     exposure_source = impf_dict["exposure_source"]
     hazard_source = impf_dict["hazard_source"]
     impact_type = impf_dict["impact_type"]
-    impact_dir = impf_dict.impact_output_dir(create=True)
     data_dir = impf_dict.data_dir()
-    plot_dir = impf_dict.plot_dir(create=write_extras)
     impact_type_list = [impf_dict["impact_type"]] + list(impf_dict["thresholds"].keys())
     figsize = (base_figsize[0], base_figsize[1] * len(impact_type_list))
 
@@ -99,6 +97,8 @@ def analyse_exceedance(impf_dict, scenario=None, write_extras=True, overwrite=Tr
             for impact_subtype in impact_type_list:
                 this_is_economic = (impact_subtype == 'economic_loss')  # clumsy: find a smarter way to combine different plot types
                 total_exposed = total_exposed_usd if this_is_economic else total_exposed_value
+                impact_dir = impf_dict.impact_output_dir(create=True)
+                impact_path = impf_dict.get_output_impact_path(haz_filepath, impact_subtype=impact_subtype)
                 impact_path = Path(impact_dir, f'impact_{impact_subtype}_{exposure_type}_{exposure_source}_{hazard_source}_{Path(haz_filepath).stem}.hdf5')
                 if not os.path.exists(impact_path):
                     raise FileNotFoundError(f'Impact data is missing: {impact_path}')
@@ -434,8 +434,6 @@ def main(analysis_name, overwrite=False):
         try:
             this_rp_data, _ = analyse_exceedance(
                 impf_dict,
-                data_dir=data_dir,
-                plot_dir=plot_dir,
                 scenario=None,
                 write_extras=True,
                 overwrite=overwrite
