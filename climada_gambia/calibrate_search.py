@@ -62,7 +62,10 @@ def simulate(impf_dict, parameters, scale_impacts):
     out_path = Path(working_dir, "calibration_search.csv")
     results.to_csv(out_path, index=False)
 
-    print("Visualising the search")
+def plot_calibration_results(impf_dict, parameters):
+    out_path = Path(working_dir, "calibration_search.csv")
+    results = pd.read_csv(out_path)
+    
     for rp_level in ["lower", "mid", "upper"]:
         rp_df = results[results['rp_level'] == rp_level]
         rp_df['score'] = np.log10(rp_df['score'])
@@ -192,6 +195,7 @@ def main(overwrite, scale_impacts):
     impf_dict["analsis_name"] = analysis_name
 
     simulate(impf_dict, parameters)
+    plot_calibration_results(impf_dict, parameters)
     print("Done")
 
 
