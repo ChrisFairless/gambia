@@ -16,7 +16,8 @@ from climada_gambia.utils_total_exposed_value import get_total_exposed_value, ge
 from climada_gambia.utils_observations import load_observations
 from climada_gambia.config import CONFIG
 from climada_gambia import utils_config
-from climada_gambia.analyse_impacts import compare_obs, get_curves, analyse_exceedance
+from climada_gambia.calibration.scoring import ScoringEngine, squared_error
+from climada_gambia.analyse_impacts import get_curves, analyse_exceedance
 from climada_gambia.impact_function_manager import ImpactFunctionManager
 from climada_gambia.metadata_impact import MetadataImpact
 
@@ -203,7 +204,10 @@ def evaluate_one_guess(impf_dict, impf, haz, exp, observations, threshold_name, 
     imp = ImpactCalc(exp, impf_step_set, haz).impact(save_mat=True, assign_centroids=False)
     total_exposed = exp.value.sum()
     curves = get_curves(scenario="present", impf_dict=impf_dict, imp=imp, impact_type=threshold_name, haz_filepath=None, total_exposed=total_exposed)
-    _, score_df = compare_obs(impf_dict, curves, observations)
+    
+    # Use ScoringEngine to compare observations
+    engine = ScoringEngine(cost_function=squared_error)
+    _, score_df = engine.compare_to_observations(curves, observations, impf_dict)
     this_score = score_df.loc[threshold_name, f"weighted_cost_{rp_level}"]
 
     guesses.append(next_guess)

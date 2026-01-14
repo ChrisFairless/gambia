@@ -16,6 +16,7 @@ from climada_gambia import utils_config
 from climada_gambia import utils_observations
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
 from climada_gambia.config import CONFIG
+from climada_gambia.calibration.scoring import ScoringEngine, squared_error
 
 analysis_name = "uncalibrated"
 
@@ -43,12 +44,6 @@ COLOURS = {
 }
 
 COLOURS2 = ['teal', 'coral', 'gold', 'lightgrey', 'lightblue', 'lightgreen', 'violet', 'ivory']
-
-# Normalised square error – doesn't like targets that are small
-# cost_function = lambda modelled, target: ((modelled - target) / target)**2
-
-# Regular square
-cost_function = lambda modelled, target: (modelled - target)**2
 
 
 def analyse_exceedance(impf_dict, scenario=None, write_extras=True, overwrite=True):
@@ -304,63 +299,21 @@ def plot_exceedance_curves(impf_dict, curves_all, plot_var, observations_all, un
 
 
 def compare_obs(impf_dict, curves_all, observations_all):
-    assert np.all(observations_all['exposure_type'] == impf_dict['exposure_type']), 'Filter for exposure type first'
-    if observations_all.shape[0] == 0:
-        return pd.DataFrame(), pd.DataFrame()
-
-    impact_subtypes = [impf_dict["impact_type"]] + list(impf_dict["thresholds"].keys())
-    all_obs = []
+    """
+    Compare modelled impact curves to observations and calculate cost scores.
     
-    for impact_subtype in impact_subtypes:
-        observations = observations_all[observations_all['impact_type'] == impact_subtype]
-        observations = observations[observations['weight'] > 0]
-        if observations.shape[0] == 0:
-            continue
-        
-        curves = curves_all[curves_all['impact_type'] == impact_subtype]
-        scenario_df = curves[curves['scenario'] == "present"]
-        if scenario_df.shape[0] == 0:
-            raise ValueError(f"Couldn't find exceedance curves for {impf_dict['exposure_type']} and {impact_subtype} – is there some unexpected combination of observations that wasn't modelled?")
-        
-        # We compare on impact fraction rather than impact because we want to be able to compare economic USD values and thresholded affected/damaged/destroyed values
-        scenario_mean = scenario_df.groupby('frequency')['impact_fraction'].agg('mean')
-        scenario_aal = (scenario_mean.index.values * scenario_mean.values).sum()
-
-        ix_aal = observations['impact_statistic'] == 'aal'
-        ix_event = observations['impact_statistic'] == 'event'
-        ix_rp = observations['impact_statistic'] == 'rp'
-        ix_event = ix_event + ix_rp
-        observations_event = observations[ix_event]
-        if observations_event.shape[0] > 0:
-            observations_event['model_lower'] = np.interp(observations_event['rp_lower'], (scenario_mean.index**-1)[::-1], scenario_mean.values[::-1])
-            observations_event['model_mid'] = np.interp(observations_event['rp_mid'], (scenario_mean.index**-1)[::-1], scenario_mean.values[::-1])
-            observations_event['model_upper'] = np.interp(observations_event['rp_upper'], (scenario_mean.index**-1)[::-1], scenario_mean.values[::-1])
-
-        observations_aal = observations[ix_aal]
-        if observations_aal.shape[0] > 0:
-            observations_aal['model_lower'] = scenario_aal
-            observations_aal['model_mid'] = scenario_aal
-            observations_aal['model_upper'] = scenario_aal
-
-        observations = pd.concat([observations_aal, observations_event])
-        observations['cost_lower'] = [cost_function(x1, x2) for x1, x2 in zip(observations['model_lower'], observations['value_fraction'])]
-        observations['cost_mid'] = [cost_function(x1, x2) for x1, x2 in zip(observations['model_mid'], observations['value_fraction'])]
-        observations['cost_upper'] = [cost_function(x1, x2) for x1, x2 in zip(observations['model_upper'], observations['value_fraction'])]
-
-        all_obs.append(observations)
-
-    all_obs = pd.concat(all_obs)
-    all_obs['weight'] = all_obs['weight'] / all_obs['weight'].sum()
-    all_obs['weighted_cost_lower'] = all_obs['weight'] * all_obs['cost_lower']
-    all_obs['weighted_cost_mid'] = all_obs['weight'] * all_obs['cost_mid']
-    all_obs['weighted_cost_upper'] = all_obs['weight'] * all_obs['cost_upper']
-    all_obs.to_csv(Path(impf_dict.impact_output_dir(), 'deleteme_testing_analysis_obs.csv'))
+    This is a wrapper function that delegates to ScoringEngine for backward compatibility.
     
-    trimmed_obs = all_obs[['impact_type', 'weighted_cost_lower', 'weighted_cost_mid', 'weighted_cost_upper']]
-    scores = trimmed_obs.groupby('impact_type')[['weighted_cost_lower', 'weighted_cost_mid', 'weighted_cost_upper']].agg(lambda x: np.sqrt(sum(x)))
-    # scores_total = all_obs[['weighted_cost_lower', 'weighted_cost_mid', 'weighted_cost_upper']].agg('sum')
-    scores.loc["TOTAL"] = trimmed_obs.set_index('impact_type').agg(lambda x: np.sqrt(sum(x)), axis=0)
-    return all_obs, scores
+    Args:
+        impf_dict: MetadataImpact instance containing impact function configuration
+        curves_all: DataFrame with exceedance curves
+        observations_all: DataFrame with observation data
+        
+    Returns:
+        Tuple of (observations_with_costs, summary_scores)
+    """
+    engine = ScoringEngine(cost_function=squared_error)
+    return engine.compare_to_observations(curves_all, observations_all, impf_dict)
 
 
 def plot_sectoral_exceedances(all_rp_data, sector_comparison_plot_path, figsize, rp_max=None):
