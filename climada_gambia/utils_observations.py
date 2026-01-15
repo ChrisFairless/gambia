@@ -38,7 +38,8 @@ class ObservationLoader:
         exposure_type: str,
         impact_type: Optional[str] = None,
         load_exceedance: bool = True,
-        load_supplementary_sources: bool = True
+        load_supplementary_sources: bool = True,
+        _recursion_list: list = []
     ) -> pd.DataFrame:
         """Main entry point - load all observations for exposure type.
         
@@ -52,6 +53,11 @@ class ObservationLoader:
         Returns:
             DataFrame with all observations for the exposure type
         """
+        # Prevent infinite recursion
+        if exposure_type in _recursion_list:
+            raise RecursionError(f"Circular reference detected for exposure type {exposure_type}")
+        _recursion_list = _recursion_list + [exposure_type]
+
         exposure_observations_list = []
         hierarchy = self._get_hierarchy_for_exposure(exposure_type)
         
@@ -68,7 +74,9 @@ class ObservationLoader:
         supplementary_source_list = self._supplementary_sources(exposure_type=exposure_type)
 
         if load_supplementary_sources and len(supplementary_source_list) > 0:
-            supplementary_obs = self._load_supplementary_sources(exposure_type, impact_type, load_exceedance)
+            supplementary_obs = self._load_supplementary_sources(
+                exposure_type, impact_type, load_exceedance, _recursion_list
+            )
             exposure_observations_list.append(supplementary_obs)
         
         # Standardize columns and concatenate all observations
@@ -183,8 +191,8 @@ class ObservationLoader:
         observations_subset = observations_subset[observations_subset['impact_type'].isin(valid_impact_types)]
         
         columns_observations = [
-            "impact_statistic", "obs_impact_type", "impact_unit_type", "exposure_unit",
-            "exposure_type", "impact_type", "value",
+            "impact_statistic", "impact_type", "impact_unit_type", "exposure_unit",
+            "exposure_type", "value",
             "rp_lower", "rp_mid", "rp_upper", "weight"
         ]
         observations_subset = observations_subset[columns_observations]
@@ -236,6 +244,7 @@ class ObservationLoader:
         Returns:
             DataFrame with prior observations from uncalibrated curves
         """
+        hierarchy = self._get_hierarchy_for_exposure(exposure_type)
 
         # Determine impact type
         if impact_type is not None:
@@ -252,15 +261,15 @@ class ObservationLoader:
             f'Multiple uncalibrated entries found in hierarchy for exposure_type={exposure_type}, impact_type={i_type}'
         uncalibrated_exposure_source = row['uncalibrated_exposure_source'].values[0]
         
-        # Build path using MetadataCalibration
-        path_builder = MetadataCalibration(
+        # Build path using MetadataImpact
+        path_builder = MetadataImpact(
             config=CONFIG,
             analysis_name=CONFIG["uncalibrated_analysis_name"]
         )
-        exceedance_dir = path_builder.exceedance_output_dir()
-        exceedance_path = Path(exceedance_dir, "exceedance.csv")
-        
-        if not os.path.exists(exceedance_path):
+
+        try:
+            exceedance_path = path_builder.exceedance_csv_path(create=True)
+        except FileNotFoundError as e:
             print(f"WARNING: Exceedance data not found at {exceedance_path} for analysis: "
                   f"you can ignore this if this is the first time you have run calculate_impacts.")
             return pd.DataFrame()
@@ -337,11 +346,7 @@ class ObservationLoader:
             
         Returns:
             DataFrame with supplementary observations
-        """
-        # Prevent infinite recursion
-        if exposure_type in _recursion_list:
-            raise RecursionError(f"Circular reference detected for exposure type {exposure_type}")
-        
+        """        
         supplementary_source_list = self._supplementary_sources(exposure_type=exposure_type)
         if len(supplementary_source_list) == 0:
             return pd.DataFrame()
@@ -353,7 +358,7 @@ class ObservationLoader:
                 f"Data source {supplementary_source} not found in hierarchy exposure types: " \
                 f"{self.hierarchy['exposure_type'].values}"
             
-            new_hierarchy = hierarchy[hierarchy['data_source'] == supplementary_source]
+            new_hierarchy = self.hierarchy[self.hierarchy['data_source'] == supplementary_source]
             assert new_hierarchy.shape[0] == 1, \
                 f'Multiple {supplementary_source} entries found in hierarchy for ' \
                 f'exposure_type={exposure_type}, impact_type={impact_type}'
@@ -371,9 +376,10 @@ class ObservationLoader:
                 exposure_type=supplementary_source,
                 impact_type=None,
                 load_exceedance=load_exceedance,
-                load_supplementary_sources=True
+                load_supplementary_sources=True,
+                _recursion_list=_recursion_list
             )
-            
+
             if supplement.shape[0] == 0:
                 continue
             
@@ -382,14 +388,12 @@ class ObservationLoader:
             supplement = supplement.rename(columns={'value': 'original_value', 'exposure_type': 'original_exposure_type'})
             supplement['exposure_type'] = exposure_type
             supplement['value'] = supplement['value_fraction'] * get_total_exposed_value(exposure_type, usd=(exposure_unit == 'USD'))
-            
             supplementary_observations_list.append(supplement)
         
         if len(supplementary_observations_list) > 0:
             return pd.concat(supplementary_observations_list, axis=0, ignore_index=True)
         else:
             return pd.DataFrame()
-
 
 def load_observations(
         exposure_type: str,

@@ -295,7 +295,7 @@ def main(overwrite, scale_impacts):
     impf_list = utils_config.gather_impact_calculation_metadata()
 
     # Exposure files tend to be larger than hazard files, so we load each exposure once, then loop through hazards
-    for analysis_name in set(conf["default_analysis_name"], conf["uncalibrated_analysis_name"]):
+    for analysis_name in {conf["default_analysis_name"], conf["uncalibrated_analysis_name"]}:
         print(f"=== Running analysis: {analysis_name} ===")
 
         for impf_dict_analysis in impf_list:

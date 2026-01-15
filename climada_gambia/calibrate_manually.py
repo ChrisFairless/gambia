@@ -53,11 +53,6 @@ impf_filter = {
     'impact_type': 'economic_loss'
 }
 
-path_builder = MetadataCalibration(
-    config=CONFIG,
-    analysis_name=analysis_name
-)
-working_dir = path_builder.calibration_working_dir(analysis_name)
 
 
 def simulate(impf_dict, parameters, scale_impacts):
@@ -68,18 +63,20 @@ def simulate(impf_dict, parameters, scale_impacts):
         parameters: Dictionary of calibration parameters as specified above
         scale_impacts: Whether to scale impacts as specified by the parameters
     """
-    data_dir = Path(CONFIG["data_dir"])
+    calibration_dict = MetadataCalibration(
+        config=CONFIG,
+        analysis_name=analysis_name
+    )
 
     # Adjust for this run
     print("Adjusting the impact function")
-    hazard_abbr = impf_dict["hazard_abbr"]
     
     # Use ImpactFunctionManager to load and scale the impact function
     manager = ImpactFunctionManager(impf_dict.impact_function_path(), hazard_abbr)
     impf = manager.load_impf()
     impf_scaled = manager.apply_scaling(impf, parameters["x_scale"], parameters["y_scale"])
         
-    temp_impf_file_path = path_builder.calibration_temp_impf_path(working_dir)
+    temp_impf_file_path = calibration_dict.calibration_temp_impf_path(analysis_name, create=True)
     impf_dict['impf_file_path'] = temp_impf_file_path
     manager.impf_to_csv(impf_scaled, temp_impf_file_path)
 
@@ -90,7 +87,7 @@ def simulate(impf_dict, parameters, scale_impacts):
                 impf_dict["thresholds"][sub_impact] = thresh
 
     if not fit_thresholds_automatically:
-        impf_dict['impact_dir'] = working_dir
+        impf_dict['impact_dir'] = calibration_dict.calibration_working_dir(analysis_name, create=True)
         impf_dict = calculate_impacts(
             impf_dict,
             scenario="present",
@@ -99,36 +96,32 @@ def simulate(impf_dict, parameters, scale_impacts):
             write_extras=True,
             overwrite=True
         )
-        _, scores = analyse_exceedance(impf_dict, data_dir, working_dir, scenario="present", write_extras=True, overwrite=True)
+        _, scores = analyse_exceedance(impf_dict, scenario="present", write_extras=True, overwrite=True)
         print("SCORES:")
         print(scores)
     
     else:
-        for fit_thresholds in ["lower", "mid", "upper"]:
+        for fit_threshold in ["lower", "mid", "upper"]:
             impf_dict_thresh = copy.deepcopy(impf_dict)
-            output_dir = path_builder.calibration_output_subdir(working_dir, fit_thresholds)
+            output_dir = calibration_dict.calibration_output_subdir(fit_threshold, create=True)
             impf_dict_thresh['impact_dir'] = output_dir
             os.makedirs(output_dir, exist_ok=True)
             impf_dict_thresh = calculate_impacts(
                 impf_dict_thresh,
                 scenario="present",
                 scale_impacts=scale_impacts,
-                fit_thresholds=fit_thresholds,
+                fit_thresholds=fit_threshold,
                 write_extras=True,
                 overwrite=True
             )
             _, scores = analyse_exceedance(impf_dict_thresh, scenario="present", write_extras=True, overwrite=True)
-            print(f"SCORES: (rp_level {fit_thresholds})")
+            print(f"SCORES: (rp_level {fit_threshold})")
             print(scores)            
 
 
 
-def main(overwrite, scale_impacts):
-    if not os.path.exists(working_dir.parent):
-        raise FileNotFoundError(f'Please create an output directory at {working_dir.parent}')
-    os.makedirs(working_dir, exist_ok=True)
-
-    impf_dict_list = utils_config.gather_impact_calculation_metadata(filter=impf_filter)
+def main(overwrite, scale_impacts, analysis_name):
+    impf_dict_list = utils_config.gather_impact_calculation_metadata(filter=impf_filter, analysis_name=analysis_name)
     assert len(impf_dict_list) == 1, f'Expected one impact function for filter {impf_filter}, found {len(impf_dict_list)}'
     impf_dict = impf_dict_list[0]
 
@@ -137,4 +130,4 @@ def main(overwrite, scale_impacts):
 
 
 if __name__ == "__main__":
-    main(overwrite=True, scale_impacts=False)
+    main(overwrite=True, scale_impacts=False, analysis_name=analysis_name)

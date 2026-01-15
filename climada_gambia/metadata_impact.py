@@ -1,14 +1,15 @@
-"""Impact function metadata container for CLIMADA Gambia project."""
+"""Impact calculation metadata container for CLIMADA Gambia project."""
 
 import warnings
 from pathlib import Path
 from typing import Optional, Dict, Any, Union, List
 
 from climada_gambia.config import CONFIG
+from climada_gambia.metadata_config import MetadataConfig
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
 
 
-class MetadataImpact:
+class MetadataImpact(MetadataConfig):
     """Container for impact calculation metadata, configuration, and path building.
     
     This class encapsulates all metadata related to an impact calculation,
@@ -64,6 +65,7 @@ class MetadataImpact:
         # Add hazard metadata
         impf['hazard_type'] = hazard_type
         impf['hazard_source'] = hazard_source
+        impf['hazard_abbr'] = cls.HAZARD_MAP.get(hazard_type, None)
         
         # Add config nodes
         impf['exposure_node'] = CONFIG.get("exposures", {}).get(
@@ -83,7 +85,7 @@ class MetadataImpact:
         
         return cls(impf)
     
-    def __init__(self, impf_dict: dict):
+    def __init__(self, impf_dict: dict, analysis_name: Optional[str] = None):
         """Initialize MetadataImpact with validation.
         
         Args:
@@ -109,12 +111,8 @@ class MetadataImpact:
                 UserWarning
             )
         
-        self._data = impf_dict
-    
-    def __getitem__(self, key):
-        """Allow dictionary-style access."""
-        return self._data[key]
-    
+        self.super().__init__(analysis_name=analysis_name, data=impf_dict)
+
     def __setitem__(self, key, value):
         """Allow dictionary-style assignment with validation.
         
@@ -128,34 +126,6 @@ class MetadataImpact:
                 UserWarning
             )
         self._data[key] = value
-    
-    def get(self, key, default=None):
-        """Get value with default."""
-        return self._data.get(key, default)
-    
-    def keys(self):
-        """Return keys."""
-        return self._data.keys()
-    
-    def _ensure_directory(self, path: Path) -> Path:
-        """Ensure directory exists, checking parent directory first.
-        
-        Args:
-            path: Path to directory to create
-            
-        Returns:
-            The path that was created
-            
-        Raises:
-            FileNotFoundError: If parent directory does not exist
-        """
-        if not path.parent.exists():
-            raise FileNotFoundError(
-                f"Parent directory does not exist: {path.parent}. "
-                f"Cannot create {path}"
-            )
-        path.mkdir(exist_ok=True)
-        return path
     
     @property
     def hazard_type(self) -> str:
@@ -195,12 +165,7 @@ class MetadataImpact:
     def impact_type(self) -> str:
         """Type of impact (e.g., 'economic_loss', 'displaced')."""
         return self._data["impact_type"]
-    
-    @property
-    def analysis_name(self) -> str:
-        """Name of the analysis (e.g., 'uncalibrated', 'calibrated')."""
-        return self._data["analysis_name"]
-    
+        
     @property
     def impf_dir(self) -> Optional[str]:
         """Directory containing impact function file."""
@@ -237,20 +202,6 @@ class MetadataImpact:
         return self._data.get("exposure_node")
     
     # Path construction methods:
-    def data_dir(self, create: bool = False) -> Path:
-        """Base data directory from CONFIG.
-        Returns:
-            Path to data directory
-        """
-        return Path(CONFIG["data_dir"])
-
-    def base_output_dir(self) -> Path:
-        """Base output directory from CONFIG.
-        Returns:
-            Path to output directory
-        """
-        return Path(CONFIG["output_dir"])
-
     def hazard_dir(self, create: bool = False) -> Path:
         """Directory containing hazard files.
         Returns:
@@ -355,33 +306,6 @@ class MetadataImpact:
         filename = (f'impact_{impact_type}_{self.exposure_type}_'
                    f'{self.exposure_source}_{self.hazard_source}_{hazard_file_stem}.hdf5')
         return Path(output_dir, filename)
-    
-    def exceedance_output_dir(self, create: bool = False) -> Path:
-        """Get directory for exceedance curve outputs.
-        
-        Args:
-            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
-            
-        Returns:
-            Path to exceedance output directory
-        """
-        path = Path(self.base_output_dir(), self.analysis_name, "exceedance")
-        if create:
-            self._ensure_directory(path)
-        return path
-
-    def exceedance_csv_path(self, create: bool = False) -> Path:
-        """Get path for exceedance curve CSV file.
-        
-        Args:
-            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
-            
-        Returns:
-            Path to exceedance CSV file
-        """
-        output_dir = self.exceedance_output_dir(create=create)
-        base_name = "exceedance.csv"
-        return Path(output_dir, base_name)
     
     def exceedance_plot_dir(self, create: bool = False) -> Path:
         """Get directory for exceedance curve plots.

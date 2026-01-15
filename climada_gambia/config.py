@@ -1,6 +1,6 @@
 CONFIG = {
     "data_dir": "/Users/chrisfairless/Data/UNU/gambia2025/inputs",
-    "output_dir": "/Users/chrisfairless/Data/UNU/gambia2025/outputs",
+    "output_dir": "/Users/chrisfairless/Data/UNU/gambia2025/outputs/v2",
     "default_analysis_name": "uncalibrated",
     "uncalibrated_analysis_name": "uncalibrated",  # Used for calculating uncalibrated exceedance curves
     "hazard": {
@@ -174,7 +174,6 @@ CONFIG = {
                     "exposure_type": "housing",
                     "exposure_source": "BEM",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
                     "thresholds": {
@@ -188,7 +187,6 @@ CONFIG = {
                     "exposure_type": "agriculture",
                     "exposure_source": "IUCN",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_agriculture_uncalibrated.csv",
                     "thresholds": {
@@ -202,7 +200,6 @@ CONFIG = {
                 #     "exposure_type": "livestock",
                 #     "exposure_source": "GLW4",
                 #     "impact_type": "affected",
-                #     "calibrated": False,
                 #     "dir": "impact_functions/uncalibrated/",
                 #     "files": "impf_river_flood_livestock_uncalibrated.csv",
                 #     "enabled": True
@@ -211,7 +208,6 @@ CONFIG = {
                     "exposure_type": "livestock",
                     "exposure_source": "GLW4",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_livestock_uncalibrated.csv",
                     "thresholds": {
@@ -225,7 +221,6 @@ CONFIG = {
                     "exposure_type": "manufacturing",
                     "exposure_source": "NCCS",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_manufacturing_uncalibrated.csv",
                     "scale_impf": 2,
@@ -235,7 +230,6 @@ CONFIG = {
                     "exposure_type": "energy",
                     "exposure_source": "NCCS",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_energy_uncalibrated.csv",
                     "scale_impf": 2,
@@ -245,7 +239,6 @@ CONFIG = {
                     "exposure_type": "services",
                     "exposure_source": "NCCS",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_services_uncalibrated.csv",
                     "scale_impf": 2,
@@ -255,7 +248,6 @@ CONFIG = {
                     "exposure_type": "roads",
                     "exposure_source": "OSM",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_services_uncalibrated.csv",
                     "enabled": False
@@ -264,7 +256,6 @@ CONFIG = {
                     "exposure_type": "economic_assets",
                     "exposure_source": "litpop",
                     "impact_type": "economic_loss",
-                    "calibrated": False,
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
                     "scale_impf": 2,

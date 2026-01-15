@@ -2,7 +2,7 @@ from pathlib import Path
 from climada_gambia.config import CONFIG
 from climada_gambia.metadata_impact import MetadataImpact
 
-def gather_impact_calculation_metadata(filter={}):
+def gather_impact_calculation_metadata(filter: dict = {}, analysis_name: str = None) -> list[MetadataImpact]:
     """Gather impact calculation metadata and return as MetadataImpact instances.
     
     Args:
@@ -20,7 +20,7 @@ def gather_impact_calculation_metadata(filter={}):
                 continue
             
             # Create enriched MetadataImpact instance from config
-            impf = MetadataImpact.from_config_impf(CONFIG, hazard_type, hazard_source, impf_raw)
+            impf = MetadataImpact.from_config_impf(hazard_type, hazard_source, impf_raw, analysis_name=analysis_name)
             
             # Apply filters
             append = True

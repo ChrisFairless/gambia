@@ -46,7 +46,6 @@ impf_filter = {
 
 
 def simulate(impf_dict, parameters, scale_impacts):
-    data_dir = Path(CONFIG["data_dir"])
     results_list = []
     for x in parameters['x_scale']:
         for y in parameters['y_scale']:
@@ -59,13 +58,15 @@ def simulate(impf_dict, parameters, scale_impacts):
             }
             results_list.append(run_one_parameter_combo(impf_dict, parameters_one, scale_impacts))
     results = pd.concat(results_list)
-    out_path = Path(working_dir, "calibration_search.csv")
+    calibration_dict = MetadataCalibration(analysis_name=analysis_name)
+    out_path = calibration_dict.calibration_search_csv_path(analysis_name, create=True)
     results.to_csv(out_path, index=False)
 
-def plot_calibration_results(impf_dict, parameters):
-    out_path = Path(working_dir, "calibration_search.csv")
+def plot_calibration_results(impf_dict: MetadataCalibration, parameters: dict):
+    calibration_dict = MetadataCalibration(analysis_name=impf_dict["analysis_name"])
+    out_path = c.calibration_search_csv_path(create=False)
     results = pd.read_csv(out_path)
-    
+
     for rp_level in ["lower", "mid", "upper"]:
         rp_df = results[results['rp_level'] == rp_level]
         rp_df['score'] = np.log10(rp_df['score'])
@@ -92,7 +93,7 @@ def plot_calibration_results(impf_dict, parameters):
         cbar = fig.colorbar(im, ax=ax)
         cbar.set_label('log10(score)')
 
-        plot_path = Path(working_dir, f'calibration_search_score_{rp_level}.png')
+        plot_path = calibration_dict.calibration_search_plot_path(rp_level, create=True)
         plt.tight_layout()
         plt.savefig(plot_path)
         plt.close(fig)
@@ -105,14 +106,14 @@ def plot_calibration_results(impf_dict, parameters):
         params = params_df.iloc[ix_score]
         impf_dict_optimised['thresholds'] = params["thresholds"]
 
-        temp_impf_file_path = Path(working_dir, f'optimal_impf_{rp_level}.csv')
+        temp_impf_file_path = calibration_dict.calibration_temp_impf_path(temp_str=f'optimised_{rp_level}', create=True)
         manager = ImpactFunctionManager(impf_dict_optimised.impact_function_path(), impf_dict_optimised['hazard_abbr'])
         impf = manager.load_impf()
         impf_scaled = manager.apply_scaling(impf, params["x_scale"], params["y_scale"])
         manager.impf_to_csv(impf_scaled, temp_impf_file_path)
         impf_dict_optimised['impf_file_path'] = temp_impf_file_path
 
-        out_dir = path_builder.calibration_output_subdir(working_dir, f'optimised_{rp_level}')
+        out_dir = calibration_dict.calibration_output_subdir(f'optimised_{rp_level}', create=True)
         impf_dict_optimised['impact_dir'] = out_dir
         os.makedirs(out_dir, exist_ok=True)
         _ = calculate_impacts(
@@ -134,15 +135,18 @@ def run_one_parameter_combo(impf_dict_in, parameters, scale_impacts):
         scale_impacts: Whether to scale impacts
     """
     impf_dict = MetadataImpact(copy.deepcopy(impf_dict_in.to_dict()))
+
     assert "thresholds" in impf_dict.keys()
-    temp_impf_file_path = path_builder.calibration_temp_impf_path(working_dir)
+    analysis_name = impf_dict_in["analysis_name"]
+    calibration_dict = MetadataCalibration(analysis_name=analysis_name)
     
     manager = ImpactFunctionManager(impf_dict.impact_function_path(), impf_dict["hazard_abbr"])
     impf = manager.load_impf()
     impf_scaled = manager.apply_scaling(impf, parameters["x_scale"], parameters["y_scale"])
+    temp_impf_file_path = calibration_dict.calibration_temp_impf_path(create=True)
     manager.impf_to_csv(impf_scaled, temp_impf_file_path)
 
-    impf_dict['impact_dir'] = working_dir
+    impf_dict['impact_dir'] = calibration_dict.calibration_working_dir(create=True)
     impf_dict['impf_file_path'] = temp_impf_file_path
 
     for sub_impact, thresh in parameters['thresholds'].items():
@@ -178,27 +182,16 @@ def run_one_parameter_combo(impf_dict_in, parameters, scale_impacts):
     return pd.DataFrame(results_list)
 
 
-def main(overwrite, scale_impacts):
-    path_builder = MetadataCalibration(
-        config=CONFIG,
-        analysis_name=analysis_name
-    )
-    working_dir = path_builder.calibration_working_dir(analysis_name)
-
-    if not os.path.exists(path_builder.base_output_dir):
-        raise FileNotFoundError(f'Please create an output directory at {path_builder.base_output_dir}')
-    os.makedirs(working_dir, exist_ok=True)
-
-    impf_dict_list = utils_config.gather_impact_calculation_metadata(filter=impf_filter)
+def main(overwrite, scale_impacts, analysis_name):
+    impf_dict_list = utils_config.gather_impact_calculation_metadata(filter=impf_filter, analysis_name=analysis_name)
     assert len(impf_dict_list) == 1, f'Expected one impact function for filter {impf_filter}, found {len(impf_dict_list)}'
     impf_dict = impf_dict_list[0]
-    impf_dict["analsis_name"] = analysis_name
 
-    simulate(impf_dict, parameters)
+    simulate(impf_dict, parameters, scale_impacts=scale_impacts)
     plot_calibration_results(impf_dict, parameters)
     print("Done")
 
 
 
 if __name__ == "__main__":
-    main(overwrite=True, scale_impacts=False)
+    main(overwrite=True, scale_impacts=False, analysis_name=analysis_name)
