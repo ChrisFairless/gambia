@@ -10,18 +10,18 @@ from matplotlib import pyplot as plt
 
 from climada_gambia import utils_config
 from climada_gambia.calculate_impacts import calculate_impacts
-from climada_gambia.analyse_impacts import analyse_exceedance
+from climada_gambia.analyse_impacts import analyse_impf_exceedance
 from climada_gambia.impact_function_manager import ImpactFunctionManager
 from climada_gambia.metadata_calibration import MetadataCalibration
-from config import CONFIG
+from climada_gambia.config import CONFIG
 
 
 
 analysis_name = "manufacturing_doubling"
 
 parameters = {
-    'x_scale': 1,
-    'y_scale': 2,
+    'scale_x': 1,
+    'scale_y': 2,
     'thresholds': {
         'affected': 0.05,
         'damaged': 0.3,
@@ -33,8 +33,8 @@ fit_thresholds_automatically = True
 
 # control
 # parameters = {
-#     'x_scale': 1,
-#     'y_scale': 1,
+#     'scale_x': 1,
+#     'scale_y': 1,
 #     'thresholds': {
 #         'affected': 0.1,
 #         'damaged': 0.5,
@@ -72,13 +72,13 @@ def simulate(impf_dict, parameters, scale_impacts):
     print("Adjusting the impact function")
     
     # Use ImpactFunctionManager to load and scale the impact function
-    manager = ImpactFunctionManager(impf_dict.impact_function_path(), hazard_abbr)
+    manager = ImpactFunctionManager(impf_dict.impact_function_path(), impf_dict['hazard_abbr'])
     impf = manager.load_impf()
-    impf_scaled = manager.apply_scaling(impf, parameters["x_scale"], parameters["y_scale"])
+    impf_scaled = manager.apply_scaling(impf, parameters["scale_x"], parameters["scale_y"])
         
     temp_impf_file_path = calibration_dict.calibration_temp_impf_path(analysis_name, create=True)
     impf_dict['impf_file_path'] = temp_impf_file_path
-    manager.impf_to_csv(impf_scaled, temp_impf_file_path)
+    manager.to_csv(impf_scaled, temp_impf_file_path)
 
     if "thresholds" in impf_dict.keys():
         for sub_impact, thresh in parameters['thresholds'].items():
@@ -87,7 +87,6 @@ def simulate(impf_dict, parameters, scale_impacts):
                 impf_dict["thresholds"][sub_impact] = thresh
 
     if not fit_thresholds_automatically:
-        impf_dict['impact_dir'] = calibration_dict.calibration_working_dir(analysis_name, create=True)
         impf_dict = calculate_impacts(
             impf_dict,
             scenario="present",
@@ -96,16 +95,18 @@ def simulate(impf_dict, parameters, scale_impacts):
             write_extras=True,
             overwrite=True
         )
-        _, scores = analyse_exceedance(impf_dict, scenario="present", write_extras=True, overwrite=True)
+        _, scores = analyse_impf_exceedance(impf_dict, scenario="present", write_extras=True, overwrite=True)
         print("SCORES:")
         print(scores)
     
     else:
         for fit_threshold in ["lower", "mid", "upper"]:
-            impf_dict_thresh = copy.deepcopy(impf_dict)
-            output_dir = calibration_dict.calibration_output_subdir(fit_threshold, create=True)
-            impf_dict_thresh['impact_dir'] = output_dir
-            os.makedirs(output_dir, exist_ok=True)
+            analysis_name_thresh = f"{analysis_name}/{fit_threshold}"
+            impf_dict_thresh = MetadataImpact(impf_dict.to_dict(), analysis_name=analysis_name_thresh)
+            # impf_dict_thresh = copy.deepcopy(impf_dict)
+            # output_dir = calibration_dict.calibration_output_subdir(fit_threshold, create=True)
+            # impf_dict_thresh['impact_dir'] = output_dir
+            # os.makedirs(output_dir, exist_ok=True)
             impf_dict_thresh = calculate_impacts(
                 impf_dict_thresh,
                 scenario="present",
@@ -114,7 +115,7 @@ def simulate(impf_dict, parameters, scale_impacts):
                 write_extras=True,
                 overwrite=True
             )
-            _, scores = analyse_exceedance(impf_dict_thresh, scenario="present", write_extras=True, overwrite=True)
+            _, scores = analyse_impf_exceedance(impf_dict_thresh, scenario="present", write_extras=True, overwrite=True)
             print(f"SCORES: (rp_level {fit_threshold})")
             print(scores)            
 
@@ -125,7 +126,7 @@ def main(overwrite, scale_impacts, analysis_name):
     assert len(impf_dict_list) == 1, f'Expected one impact function for filter {impf_filter}, found {len(impf_dict_list)}'
     impf_dict = impf_dict_list[0]
 
-    simulate(impf_dict, parameters)
+    simulate(impf_dict, parameters, scale_impacts)
 
 
 

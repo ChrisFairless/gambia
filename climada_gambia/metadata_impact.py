@@ -2,12 +2,16 @@
 
 import warnings
 from pathlib import Path
+import pandas as pd
 from typing import Optional, Dict, Any, Union, List
 
 from climada_gambia.config import CONFIG
 from climada_gambia.metadata_config import MetadataConfig
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
 
+VALID_MAIN_IMPACT_TYPES = {'economic_loss', 'displaced'}
+VALID_THRESHOLD_IMPACT_TYPES = {'affected', 'damaged', 'destroyed'}
+VALID_IMPACT_TYPES = VALID_MAIN_IMPACT_TYPES | VALID_THRESHOLD_IMPACT_TYPES
 
 class MetadataImpact(MetadataConfig):
     """Container for impact calculation metadata, configuration, and path building.
@@ -24,11 +28,11 @@ class MetadataImpact(MetadataConfig):
     # Optional fields from config or added programmatically
     OPTIONAL_FIELDS = {
         # From config.py impact_functions
-        'dir', 'files', 'thresholds', 'scale_impf', 'enabled',
+        'dir', 'files', 'thresholds', 'scale_x', 'scale_y', 'enabled',
         # Added programmatically
         'analysis_name', 'hazard_abbr', 'exposure_node', 'hazard_node',
         # Added during calculation/analysis
-        'scores', 'impact_files'
+        'scores'
     }
     
     # All allowed fields
@@ -54,7 +58,10 @@ class MetadataImpact(MetadataConfig):
         """
         
         # Start with copy of raw data
-        impf = dict(impf_raw)
+        if isinstance(impf_raw, MetadataImpact):
+            impf = impf_raw.to_dict()
+        else:
+            impf = dict(impf_raw)
         
         # Add analysis_name from config
         if analysis_name is not None:
@@ -83,7 +90,7 @@ class MetadataImpact(MetadataConfig):
         if 'thresholds' not in impf:
             impf['thresholds'] = {}
         
-        return cls(impf)
+        return cls(impf, analysis_name=analysis_name)
     
     def __init__(self, impf_dict: dict, analysis_name: Optional[str] = None):
         """Initialize MetadataImpact with validation.
@@ -98,20 +105,31 @@ class MetadataImpact(MetadataConfig):
             UserWarning: If unexpected fields are present
         """
         # Validate required fields
-        missing = self.REQUIRED_FIELDS - set(impf_dict.keys())
+        if isinstance(impf_dict, MetadataImpact):
+            impf_dict = impf_dict.to_dict()
+
+        self.check_required_fields(impf_dict)
+        self.check_allowed_fields(impf_dict)
+        
+        super().__init__(analysis_name=analysis_name, data=impf_dict)
+        if self.analysis_name == "deleteme":
+            raise ValueError("MetadataImpact initialized with placeholder analysis_name 'deleteme'.")
+    
+    @classmethod
+    def check_required_fields(cls, impf_dict):
+        missing = cls.REQUIRED_FIELDS - set(impf_dict.keys())
         if missing:
             raise ValueError(f"Missing required fields: {missing}")
-        
-        # Warn about unexpected fields
-        unexpected = set(impf_dict.keys()) - self.ALLOWED_FIELDS
+
+    @classmethod
+    def check_allowed_fields(cls, impf_dict):
+        unexpected = set(impf_dict.keys()) - cls.ALLOWED_FIELDS
         if unexpected:
             warnings.warn(
                 f"Unexpected fields in impact metadata: {unexpected}. "
-                f"Allowed fields are: {self.ALLOWED_FIELDS}",
+                f"Allowed fields are: {cls.ALLOWED_FIELDS}",
                 UserWarning
             )
-        
-        self.super().__init__(analysis_name=analysis_name, data=impf_dict)
 
     def __setitem__(self, key, value):
         """Allow dictionary-style assignment with validation.
@@ -127,6 +145,10 @@ class MetadataImpact(MetadataConfig):
             )
         self._data[key] = value
     
+    @property
+    def identifier(self) -> str:
+        return f"{self.exposure_type}_{self.exposure_source}_{self.hazard_abbr}_{self.hazard_source}"
+
     @property
     def hazard_type(self) -> str:
         """Type of hazard (e.g., 'flood')."""
@@ -165,6 +187,14 @@ class MetadataImpact(MetadataConfig):
     def impact_type(self) -> str:
         """Type of impact (e.g., 'economic_loss', 'displaced')."""
         return self._data["impact_type"]
+
+    # All impact types associated with this function, including thresholds and observations    
+    def impact_type_list(self, observations: pd.DataFrame) -> list[str]:
+        if observations is None:
+            observations = pd.DataFrame()
+        if observations.shape[0] > 0:
+            return list(set([self._data["impact_type"]]) | set(observations["impact_type"]) | set(self._data["thresholds"].keys()))
+        return list(set([self._data["impact_type"]]) | set(self._data["thresholds"].keys()))
         
     @property
     def impf_dir(self) -> Optional[str]:
@@ -182,9 +212,14 @@ class MetadataImpact(MetadataConfig):
         return self._data.get("thresholds", {})
     
     @property
-    def scale_impf(self) -> Optional[float]:
-        """Scaling factor for impact function."""
-        return self._data.get("scale_impf")
+    def scale_x(self) -> Optional[float]:
+        """Scaling factor for impact function in the x dimension."""
+        return self._data.get("scale_x")
+    
+    @property
+    def scale_y(self) -> Optional[float]:
+        """Scaling factor for impact function in the y dimension."""
+        return self._data.get("scale_y")
     
     @property
     def enabled(self) -> bool:
@@ -201,6 +236,7 @@ class MetadataImpact(MetadataConfig):
         """Configuration node for this exposure from CONFIG."""
         return self._data.get("exposure_node")
     
+
     # Path construction methods:
     def hazard_dir(self, create: bool = False) -> Path:
         """Directory containing hazard files.
@@ -241,7 +277,7 @@ class MetadataImpact(MetadataConfig):
         
         if create:
             if "/" in impf_dir:
-                self._ensure_directory(path.parent)
+                self._ensure_directory(path.parent, depth=2)
             self._ensure_directory(path)
         return path
 
@@ -264,6 +300,7 @@ class MetadataImpact(MetadataConfig):
         
         # Handle case where files might be a list (take first)
         if isinstance(impf_files, list):
+            print("Multiple impact function files found; using the first one.")
             impf_file = impf_files[0]
         else:
             impf_file = impf_files
@@ -280,16 +317,15 @@ class MetadataImpact(MetadataConfig):
         Returns:
             Path to impact output directory
         """
-        path = Path(
-            self.base_output_dir(),
-            self.analysis_name,
-            "impacts",
-            f"{self.exposure_type}_{self.exposure_source}"
-        )
+        impact_parent_dir = Path(self.analysis_output_dir(create=create), "impacts")
+        if create:
+            self._ensure_directory(impact_parent_dir)
         
+        path = Path(impact_parent_dir, f"{self.exposure_type}_{self.exposure_source}")
         if create:
             self._ensure_directory(path)
         return path
+
 
     def impact_file_path(self, hazard_file_stem: str, impact_type: str, create: bool = False) -> Path:
         """Get full path for single impact HDF5 file.
@@ -302,35 +338,66 @@ class MetadataImpact(MetadataConfig):
         Returns:
             Full path to impact HDF5 file
         """
+        assert impact_type in VALID_IMPACT_TYPES
         output_dir = self.impact_output_dir(create=create)
-        filename = (f'impact_{impact_type}_{self.exposure_type}_'
-                   f'{self.exposure_source}_{self.hazard_source}_{hazard_file_stem}.hdf5')
+        filename = (f'impact_{impact_type}_{self.identifier}_{hazard_file_stem}.hdf5')
+        return Path(output_dir, filename)
+
+
+    def impact_rp_level_file_path(self, hazard_file_stem: str, impact_type: str, rp_level: str, create: bool = False) -> Path:
+        """Get full path for single impact HDF5 file.
+        
+        Args:
+            hazard_file_stem: Stem of the hazard filename (without extension)
+            impact_type: Type of impact being calculated
+            rp_level: Return period level (optional), one of "lower", "mid", "upper"
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+            
+        Returns:
+            Full path to impact HDF5 file
+        """
+        assert impact_type in VALID_THRESHOLD_IMPACT_TYPES, f"impact_type '{impact_type}' not valid for creating this file"
+        output_dir = self.impact_output_dir(create=create)
+        filename = (f'impact_{impact_type}_{self.identifier}_{hazard_file_stem}_{rp_level}.hdf5')
         return Path(output_dir, filename)
     
-    def exceedance_plot_dir(self, create: bool = False) -> Path:
-        """Get directory for exceedance curve plots.
+    def fitted_thresholds_dir(self, create: bool = False) -> Path:
+        """Get directory for fitted thresholds CSV file.
         
         Args:
             create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
-            
         Returns:
-            Path to exceedance plot directory
+            Path to fitted thresholds directory
         """
-        path = Path(self.exceedance_output_dir(create=create), "plots")
+        output_dir = self.impact_output_dir(create=create)
         if create:
-            self._ensure_directory(path)
-        return path
-    
-    def plot_dir(self, create: bool = False) -> Path:
-        """Get directory for plots (alias for exceedance_plot_dir for backwards compatibility).
+            self._ensure_directory(output_dir)
+        return output_dir
+
+    def fitted_thresholds_file_path(self, create: bool = False) -> Path:
+        """Get path for fitted thresholds CSV file.
         
         Args:
-            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
             
         Returns:
-            Path to plot directory
+            Path to fitted thresholds CSV file
         """
-        return self.exceedance_plot_dir(create=create)
+        dir_path = self.fitted_thresholds_dir(create=create)
+        filename = (f"fitted_thresholds_{self.identifier}.csv")
+        return Path(dir_path, filename)
+
+    def exceedance_type_csv_path(self, create: bool = False) -> Path:
+        """Get path for exceedance curve CSV file for a specific impact type.
+        
+        Args:
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+        Returns:
+            Path to exceedance CSV file
+        """
+        output_dir = self.exceedance_csv_dir(create=create)
+        base_name = f"exceedance_{self.identifier}.csv"
+        return Path(output_dir, base_name)
 
     def exceedance_plot_path(self, impact_type: str, zoom: str = None, create: bool = False) -> Path:
         """Get path for exceedance curve plot PNG.
@@ -344,12 +411,97 @@ class MetadataImpact(MetadataConfig):
             Path to exceedance plot PNG file
         """
         plot_dir = self.exceedance_plot_dir(create=create)
-        base_name = (f"exceedance_{impact_type}_{self.hazard_source}_"
-                    f"{self.exposure_source}_{self.exposure_type}")
+        base_name = (f"exceedance_{impact_type}_{self.identifier}")
         if zoom:
             base_name = f"{base_name}_{zoom}"
         return Path(plot_dir, f"{base_name}.png")
+    
+    def scored_observations_csv_path(self, create: bool = False) -> Path:
+        """Get path for scored observations CSV file.
         
+        Args:
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+        Returns:
+            Path to scored observations CSV file
+        """
+        plot_dir = self.exceedance_output_dir(create=create)
+        filename = (f"scored_observations_{self.impact_type}_{self.identifier}.csv")
+        return Path(plot_dir, filename)
+    
+    def scores_csv_path(self, create: bool = False) -> Path:
+        """Get path for scores CSV file.
+        
+        Args:
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+        
+        Returns:
+            Path to scores CSV file
+        """
+        plot_dir = self.exceedance_output_dir(create=create)
+        filename = (f"scores_{self.impact_type}_{self.identifier}.csv")
+        return Path(plot_dir, filename) 
+
+    def uncertainty_results_dir(self, create: bool = False) -> Path:
+        """Get directory for uncertainty analysis results.
+        
+        Args:
+            scenario: Scenario name
+            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+        Returns:
+            Path to uncertainty results directory
+        """
+        path = Path(self.analysis_output_dir(create=create), "uncertainty")
+        if create:
+            self._ensure_directory(path)
+        return path
+
+    def uncertainty_results_paths(self, scenario: str, create: bool = False) -> Path:
+        """Get paths for uncertainty analysis output files.
+        
+        Args:
+            scenario: Scenario name
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+        Returns:
+            Dictionary of paths to uncertainty results files
+        """
+        output_dir = self.uncertainty_results_dir(create=create)
+        return {
+            "csv": Path(output_dir, f"uncertainty_{scenario}.csv"),
+            "plot": Path(output_dir, f"plot_uncertainty_{scenario}.png"),
+            "rps": Path(output_dir, f"plot_uncertainty_rps_{scenario}.png")
+        }
+
+    def insurance_results_dir(self, create: bool = False) -> Path:
+        """Get directory for insurance analysis results.
+        
+        Args:
+            scenario: Scenario name
+            create: If True, ensure directory exists (checks parent and creates with exist_ok=True)
+        Returns:
+            Path to insurance results directory
+        """
+        path = Path(self.analysis_output_dir(create=create), "insurance")
+        if create:
+            self._ensure_directory(path)
+        return path
+
+    def insurance_results_paths(self, scenario: str, create: bool = False) -> Path:
+        """Get paths for insurance analysis output files.
+        
+        Args:
+            scenario: Scenario name
+            create: If True, ensure parent directory exists (checks grandparent and creates with exist_ok=True)
+        Returns:
+            Dictionary of paths to insurance results files
+        """
+        output_dir = self.insurance_results_dir(create=create)
+        return {
+            "csv": Path(output_dir, f"insurance_{scenario}.csv"),
+            "plot": Path(output_dir, f"plot_insurance_{scenario}.png"),
+            "rps": Path(output_dir, f"plot_insurance_rps_{scenario}.png")
+        }
+    
+
     def to_dict(self) -> dict:
         """Return underlying dictionary."""
         return self._data

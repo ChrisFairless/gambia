@@ -13,7 +13,7 @@ class MetadataCalibration(MetadataConfig):
             config: Configuration dictionary (typically CONFIG)
             analysis_name: Name of the analysis for output directory structure
         """
-        self.super().__init__(analysis_name=analysis_name)
+        super().__init__(analysis_name=analysis_name)
             
     def calibration_working_dir(self, create: bool = False) -> Path:
         """Get working directory for calibration analysis."""
@@ -28,13 +28,13 @@ class MetadataCalibration(MetadataConfig):
             path = Path(working_dir, f"temp_impf_{temp_str}.csv")
         return path
         
-    def calibration_output_subdir(self, rp_level: str, create: bool = False) -> Path:
-        """Get subdirectory for specific RP level (lower/mid/upper)."""
-        working_dir = self.calibration_working_dir(create=create)
-        path = Path(working_dir, rp_level)
-        if create:
-            self._ensure_directory(path)
-        return path
+    # def calibration_output_subdir(self, rp_level: str, create: bool = False) -> Path:
+    #     """Get subdirectory for specific RP level (lower/mid/upper)."""
+    #     working_dir = self.calibration_working_dir(create=create)
+    #     path = Path(working_dir, rp_level)
+    #     if create:
+    #         self._ensure_directory(path)
+    #     return path
     
     def calibration_search_csv_path(self, create: bool = False) -> Path:
         """Get path for calibration search results CSV."""
@@ -46,4 +46,24 @@ class MetadataCalibration(MetadataConfig):
         """Get path for calibration search results plot PNG."""
         working_dir = self.calibration_working_dir(create=create)
         path = Path(working_dir, f'calibration_search_score_{rp_level}.png')
+        return path
+
+    def calibration_plotting_dir(self, create: bool = False) -> Path:
+        """Get directory for calibration plots."""
+        working_dir = self.calibration_working_dir(create=create)
+        path = Path(working_dir, "plots")
+        if create:
+            self._ensure_directory(path)
+        return path
+
+    def calibration_output_paths(self, create: bool = False) -> dict[str, Path]:
+        """Get a dict containing paths for calibration outputs"""
+        working_dir = self.calibration_plotting_dir(create=create)
+        return {
+            'uncertainty_stats_csv': Path(working_dir, "uncertainty_stats.csv"),
+            'present_comparison': Path(working_dir, "plot_present_comparison.png"),
+            'future_comparison': Path(working_dir, "plot_future_comparison.png"),
+            'waterfall': Path(working_dir, "plot_waterfall.png"),
+        }
+        path = Path(working_dir, f'calibrated_impf_{rp_level}.csv')
         return path

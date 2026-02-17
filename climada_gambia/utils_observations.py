@@ -7,15 +7,14 @@ from typing import Optional
 
 from climada_gambia.config import CONFIG
 from climada_gambia.utils_total_exposed_value import get_total_exposed_value
-from climada_gambia.metadata_calibration import MetadataCalibration
+from climada_gambia.metadata_impact import MetadataConfig, VALID_IMPACT_TYPES
 
 observations_path = Path('/Users/chrisfairless/Library/CloudStorage/OneDrive-Personal/Projects/UNU/gambia2025/data/observations_curated.xlsx')
 
 OBSERVATIONS_FULL = pd.read_excel(observations_path, sheet_name='event_observations')
 HIERARCHY_FULL = pd.read_excel(observations_path, sheet_name='hierarchy')
 
-valid_impact_types = ['economic_loss', 'displaced', 'affected', 'damaged', 'destroyed']
-
+RP_LEVELS = ['lower', 'mid', 'upper']
 
 class ObservationLoader:
     """Loads and processes observation data for calibration."""
@@ -30,8 +29,8 @@ class ObservationLoader:
             observations_df = OBSERVATIONS_FULL
         if hierarchy_df is None:
             hierarchy_df = HIERARCHY_FULL
-        self.observations = observations_df
-        self.hierarchy = hierarchy_df
+        self.observations = copy.deepcopy(observations_df)
+        self.hierarchy = copy.deepcopy(hierarchy_df)
     
     def load_for_exposure(
         self,
@@ -53,20 +52,22 @@ class ObservationLoader:
         Returns:
             DataFrame with all observations for the exposure type
         """
+        # TODO: add some validity checks for the observation data: check it's correctly classified etc
+
         # Prevent infinite recursion
         if exposure_type in _recursion_list:
             raise RecursionError(f"Circular reference detected for exposure type {exposure_type}")
         _recursion_list = _recursion_list + [exposure_type]
 
         exposure_observations_list = []
-        hierarchy = self._get_hierarchy_for_exposure(exposure_type)
+        hierarchy_exp = self._get_hierarchy_for_exposure(exposure_type)
         
         # Load direct observations from Excel
         direct_obs = self._load_direct_observations(exposure_type, impact_type)
         exposure_observations_list.append(direct_obs)
         
         # Load uncalibrated priors if requested
-        if load_exceedance and 'uncalibrated' in hierarchy['data_source'].values:
+        if load_exceedance and 'uncalibrated' in hierarchy_exp['data_source'].values:
             uncalibrated_obs = self._load_uncalibrated_priors(exposure_type, impact_type)
             exposure_observations_list.append(uncalibrated_obs)
         
@@ -81,17 +82,19 @@ class ObservationLoader:
         
         # Standardize columns and concatenate all observations
         exposure_observations_list = [df for df in exposure_observations_list if df.shape[0] > 0]
+        
         for i, df in enumerate(exposure_observations_list):
             exposure_observations_list[i] = df[[
                 "observation_type", "impact_statistic", "impact_type", "impact_unit_type",
-                "exposure_unit", "exposure_type", "value", "value_fraction",
+                "exposure_unit", "exposure_type", "original_exposure_type", "value", "value_fraction",
                 "rp_lower", "rp_mid", "rp_upper", "weight"
-            ]]
+            ]].reset_index(drop=True)
         
-        if len(exposure_observations_list) > 0:
+        if len(exposure_observations_list) > 1:
             return pd.concat(exposure_observations_list, axis=0, ignore_index=True)
-        else:
-            return pd.DataFrame()
+        if len(exposure_observations_list) == 1:
+            return exposure_observations_list[0]
+        return pd.DataFrame()
     
     def _get_hierarchy_for_exposure(self, exposure_type: str) -> pd.DataFrame:
         """Get hierarchy rows for exposure type, filtering by weight > 0.
@@ -102,9 +105,9 @@ class ObservationLoader:
         Returns:
             Filtered hierarchy DataFrame
         """
-        hierarchy = self.hierarchy[self.hierarchy['exposure_type'] == exposure_type]
-        hierarchy = hierarchy[hierarchy['weight'] != 0]
-        return hierarchy
+        hierarchy_exp = self.hierarchy[self.hierarchy['exposure_type'] == exposure_type]
+        hierarchy_exp = hierarchy_exp[hierarchy_exp['weight'] != 0]
+        return hierarchy_exp
     
     def _calculate_fractions(
         self,
@@ -154,8 +157,8 @@ class ObservationLoader:
         Returns:
             List of supplementary data source names
         """
-        hierarchy = self._get_hierarchy_for_exposure(exposure_type)
-        supplementary_sources = self.hierarchy['data_source'].unique().tolist()
+        hierarchy_exp = self._get_hierarchy_for_exposure(exposure_type)
+        supplementary_sources = hierarchy_exp['data_source'].unique().tolist()
         supplementary_sources = [src for src in supplementary_sources if src not in ['observations', 'uncalibrated']]
         return supplementary_sources
 
@@ -173,12 +176,12 @@ class ObservationLoader:
         Returns:
             DataFrame with direct observations
         """
-        hierarchy = self._get_hierarchy_for_exposure(exposure_type)
+        hierarchy_exp = self._get_hierarchy_for_exposure(exposure_type)
         
-        if 'observations' not in hierarchy['data_source'].values:
+        if 'observations' not in hierarchy_exp['data_source'].values:
             return pd.DataFrame()
         
-        hierarchy_subset = hierarchy[hierarchy['data_source'] == 'observations']
+        hierarchy_subset = hierarchy_exp[hierarchy_exp['data_source'] == 'observations']
         assert hierarchy_subset.shape[0] == 1, \
             f'Multiple observation entries found in hierarchy for exposure_type={exposure_type}'
         total_weight = hierarchy_subset['weight'].values[0]
@@ -188,11 +191,13 @@ class ObservationLoader:
         observations_subset = observations_subset[observations_subset['value'].notna()]
         observations_subset = observations_subset[observations_subset['weight'] != 0]
         observations_subset = observations_subset[observations_subset['exposure_type'] == exposure_type]
-        observations_subset = observations_subset[observations_subset['impact_type'].isin(valid_impact_types)]
+        observations_subset = observations_subset[observations_subset['impact_type'].isin(VALID_IMPACT_TYPES)]
         
+        observations_subset["original_exposure_type"] = exposure_type
+
         columns_observations = [
             "impact_statistic", "impact_type", "impact_unit_type", "exposure_unit",
-            "exposure_type", "value",
+            "exposure_type",  "original_exposure_type", "value",
             "rp_lower", "rp_mid", "rp_upper", "weight"
         ]
         observations_subset = observations_subset[columns_observations]
@@ -210,11 +215,7 @@ class ObservationLoader:
             impact_subset = observations_subset[observations_subset['impact_type'] == i_type]
             if impact_subset.shape[0] == 0:
                 continue
-            
-            # Apply weights
-            impact_subset = self._normalise_weights(impact_subset, total_weight)
-            impact_subset['observation_type'] = 'observations'
-            
+                        
             # Calculate impacts as fractions
             assert len(impact_subset['exposure_unit'].unique()) == 1, \
                 f"Unexpected set of exposure units for exposure_type {exposure_type} impact_type {i_type}: " \
@@ -226,7 +227,12 @@ class ObservationLoader:
             exposure_observations_list.append(impact_subset)
         
         if len(exposure_observations_list) > 0:
-            return pd.concat(exposure_observations_list, axis=0, ignore_index=True)
+            impact_df = pd.concat(exposure_observations_list, axis=0, ignore_index=True)
+
+            # Apply weights
+            impact_df = self._normalise_weights(impact_df, total_weight)
+            impact_df['observation_type'] = 'observations'
+            return impact_df
         else:
             return pd.DataFrame()
     
@@ -244,7 +250,7 @@ class ObservationLoader:
         Returns:
             DataFrame with prior observations from uncalibrated curves
         """
-        hierarchy = self._get_hierarchy_for_exposure(exposure_type)
+        hierarchy_exp = self._get_hierarchy_for_exposure(exposure_type)
 
         # Determine impact type
         if impact_type is not None:
@@ -256,20 +262,16 @@ class ObservationLoader:
         if i_type in ['affected', 'damaged', 'destroyed']:
             return pd.DataFrame()
         
-        row = hierarchy[hierarchy['data_source'] == 'uncalibrated']
+        row = hierarchy_exp[hierarchy_exp['data_source'] == 'uncalibrated']
         assert row.shape[0] == 1, \
             f'Multiple uncalibrated entries found in hierarchy for exposure_type={exposure_type}, impact_type={i_type}'
         uncalibrated_exposure_source = row['uncalibrated_exposure_source'].values[0]
         
-        # Build path using MetadataImpact
-        path_builder = MetadataImpact(
-            config=CONFIG,
-            analysis_name=CONFIG["uncalibrated_analysis_name"]
-        )
+        # Build path using MetadataConfig
+        path_builder = MetadataConfig(analysis_name=CONFIG["uncalibrated_analysis_name"])
+        exceedance_path = path_builder.exceedance_all_csv_path(create=True)
 
-        try:
-            exceedance_path = path_builder.exceedance_csv_path(create=True)
-        except FileNotFoundError as e:
+        if not exceedance_path.exists():
             print(f"WARNING: Exceedance data not found at {exceedance_path} for analysis: "
                   f"you can ignore this if this is the first time you have run calculate_impacts.")
             return pd.DataFrame()
@@ -315,6 +317,7 @@ class ObservationLoader:
                 "impact_unit_type": "fraction",
                 "exposure_unit": exposure_unit,
                 "exposure_type": exposure_type,
+                "original_exposure_type": exposure_type,
                 "value": irow['impact_fraction'],
                 "rp_lower": irow['rp'],
                 "rp_mid": irow['rp'],
@@ -326,7 +329,7 @@ class ObservationLoader:
         # Calculate fractions
         total_exposed_value = get_total_exposed_value(exposure_type, usd=(exposure_unit == 'USD'))
         uncalibrated_obs = self._calculate_fractions(uncalibrated_obs, total_exposed_value=total_exposed_value)
-        
+
         return uncalibrated_obs
     
     def _load_supplementary_sources(
@@ -358,7 +361,8 @@ class ObservationLoader:
                 f"Data source {supplementary_source} not found in hierarchy exposure types: " \
                 f"{self.hierarchy['exposure_type'].values}"
             
-            new_hierarchy = self.hierarchy[self.hierarchy['data_source'] == supplementary_source]
+            hierarchy_exp = self._get_hierarchy_for_exposure(exposure_type)
+            new_hierarchy = hierarchy_exp[hierarchy_exp['data_source'] == supplementary_source]
             assert new_hierarchy.shape[0] == 1, \
                 f'Multiple {supplementary_source} entries found in hierarchy for ' \
                 f'exposure_type={exposure_type}, impact_type={impact_type}'
@@ -385,7 +389,12 @@ class ObservationLoader:
             
             # Apply weights and scale values
             supplement = self._normalise_weights(supplement, total_weight)
-            supplement = supplement.rename(columns={'value': 'original_value', 'exposure_type': 'original_exposure_type'})
+            for var in 'value', 'exposure_type':
+                original_var = 'original_' + var
+                if original_var not in supplement.columns:
+                    supplement[original_var] = supplement[var]
+                else:
+                    supplement[original_var] = [x if x is not np.nan else y for x, y in zip(supplement[original_var], supplement[var])]
             supplement['exposure_type'] = exposure_type
             supplement['value'] = supplement['value_fraction'] * get_total_exposed_value(exposure_type, usd=(exposure_unit == 'USD'))
             supplementary_observations_list.append(supplement)
@@ -429,6 +438,51 @@ def load_observations(
         load_supplementary_sources=load_supplementary_sources
     )
 
+
+def load_observations_for_one_rp_level(
+        exposure_type: str,
+        impact_type: Optional[str] = None,
+        rp_level: str = None,
+        load_exceedance: bool = True,
+        load_supplementary_sources: bool = True
+    ):
+    """Load observations for a given exposure type and return period level.
+    This function is a wrapper around ObservationLoader for backward compatibility.
+    Args:
+        exposure_type: Exposure type to load observations for
+        impact_type: Impact type to filter observations for
+        rp_level: Return period level to filter observations for (one of "lower", "mid", "upper")
+        load_exceedance: Whether to load uncalibrated exceedance curves as additional observations 
+            (when specified in hierarchy). Name of analysis to load exceedance data from is taken 
+            from CONFIG["uncalibrated_analysis_name"] but specified in the hierarchy file as 
+            simply 'uncalibrated'.
+        load_supplementary_sources: Whether to load supplementary observation sources 
+            (when specified in hierarchy)
+    Returns:
+        DataFrame of observations
+    """
+    assert rp_level in RP_LEVELS
+    loader = ObservationLoader(
+        observations_df=OBSERVATIONS_FULL,
+        hierarchy_df=HIERARCHY_FULL
+    )
+    all_observations = loader.load_for_exposure(
+        exposure_type=exposure_type,
+        impact_type=impact_type,
+        load_exceedance=load_exceedance,
+        load_supplementary_sources=load_supplementary_sources
+    )
+    rp_col = 'rp_' + rp_level
+    if all_observations.shape[0] == 0:
+        return all_observations
+    all_observations = all_observations[[
+        "observation_type", "impact_statistic", "impact_type", "impact_unit_type",
+        "exposure_unit", "exposure_type", "original_exposure_type", "value", "value_fraction",
+        rp_col, "weight"
+    ]].reset_index(drop=True)
+    all_observations = all_observations.rename(columns={rp_col: 'rp'})
+    return all_observations
+    
 
 def calculate_observation_fractions(observations, total_exposed_value):
     if 'value_fraction' not in observations.columns:

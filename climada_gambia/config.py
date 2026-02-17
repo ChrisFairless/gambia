@@ -1,7 +1,7 @@
 CONFIG = {
     "data_dir": "/Users/chrisfairless/Data/UNU/gambia2025/inputs",
     "output_dir": "/Users/chrisfairless/Data/UNU/gambia2025/outputs/v2",
-    "default_analysis_name": "uncalibrated",
+    "default_analysis_name": "deleteme",
     "uncalibrated_analysis_name": "uncalibrated",  # Used for calculating uncalibrated exceedance curves
     "hazard": {
         # hazards are stored in the input data folder / hazard / f'{hazard_type}_{hazard_source}' / haz
@@ -18,8 +18,8 @@ CONFIG = {
                     "scenario": "RCP4.5",
                     "year": 2050,
                     "files": [
+                        # "GMB_inunriver_rcp4p5_ALL_2050.hdf5",
                         "GMB_inunriver_rcp4p5_MIROC-ESM-CHEM_2050.hdf5",
-                        "GMB_inunriver_rcp4p5_ALL_2050.hdf5",
                         "GMB_inunriver_rcp4p5_NorESM1-M_2050.hdf5",
                         "GMB_inunriver_rcp4p5_GFDL-ESM2M_2050.hdf5",
                         "GMB_inunriver_rcp4p5_HadGEM2-ES_2050.hdf5",
@@ -31,9 +31,9 @@ CONFIG = {
                     "scenario": "RCP8.5",
                     "year": 2050,
                     "files": [
+                        # "GMB_inunriver_rcp8p5_ALL_2050.hdf5",
                         "GMB_inunriver_rcp8p5_IPSL-CM5A-LR_2050.hdf5",
                         "GMB_inunriver_rcp8p5_MIROC-ESM-CHEM_2050.hdf5",
-                        "GMB_inunriver_rcp8p5_ALL_2050.hdf5",
                         "GMB_inunriver_rcp8p5_NorESM1-M_2050.hdf5",
                         "GMB_inunriver_rcp8p5_GFDL-ESM2M_2050.hdf5",
                         "GMB_inunriver_rcp8p5_HadGEM2-ES_2050.hdf5"
@@ -167,7 +167,7 @@ CONFIG = {
                         'damaged': 0.5,
                         'destroyed': 0.8
                     },
-                    "scale_impf": 2,
+                    "scale_y": 2.5,
                     "enabled": True
                 },
                 {
@@ -193,7 +193,7 @@ CONFIG = {
                         'affected': 0.1,
                         'damaged': 0.5
                     },
-                    "scale_impf": 1.5,
+                    "scale_y": 1.5,
                     "enabled": True
                 },
                 # {
@@ -210,11 +210,8 @@ CONFIG = {
                     "impact_type": "economic_loss",
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_livestock_uncalibrated.csv",
-                    "thresholds": {
-                        'affected': 0.1,
-                        'damaged': 0.5
-                    },
-                    "scale_impf": 0.5,
+                    "thresholds": {},
+                    "scale_y": 0.5,
                     "enabled": True
                 },
                 {
@@ -223,7 +220,12 @@ CONFIG = {
                     "impact_type": "economic_loss",
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_manufacturing_uncalibrated.csv",
-                    "scale_impf": 2,
+                    "thresholds": {
+                        'affected': 0.1,
+                        'damaged': 0.5,
+                        'destroyed': 0.8
+                    },
+                    "scale_y": 5,
                     "enabled": True
                 },
                 {
@@ -232,7 +234,12 @@ CONFIG = {
                     "impact_type": "economic_loss",
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_energy_uncalibrated.csv",
-                    "scale_impf": 2,
+                    "thresholds": {
+                        'affected': 0.1,
+                        'damaged': 0.5,
+                        'destroyed': 0.8
+                    },
+                    "scale_y": 2,
                     "enabled": True
                 },
                 {
@@ -241,7 +248,12 @@ CONFIG = {
                     "impact_type": "economic_loss",
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_services_uncalibrated.csv",
-                    "scale_impf": 2,
+                    "thresholds": {
+                        'affected': 0.1,
+                        'damaged': 0.5,
+                        'destroyed': 0.8
+                    },
+                    "scale_y": 3,
                     "enabled": True
                 },
                 {
@@ -258,7 +270,7 @@ CONFIG = {
                     "impact_type": "economic_loss",
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
-                    "scale_impf": 2,
+                    "scale_y": 3,
                     "enabled": True
                 },
             ]

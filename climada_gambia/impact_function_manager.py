@@ -24,12 +24,14 @@ class ImpactFunctionManager:
         if not self.filepath.exists():
             raise FileNotFoundError(f"Impact function file not found: {self.filepath}")
     
-    def load_impfset(self, scale_mdd: float = 1.0) -> ImpactFuncSet:
+    def load_impfset(self, scale_x: float = 1.0, scale_y: float = 1.0) -> ImpactFuncSet:
         """Load impact function set from CSV with optional scaling.
         
         Args:
-            scale_mdd: Scaling factor to apply to mdd (mean damage degree) values.
-                      Default is 1.0 (no scaling).
+            scale_x: Scaling factor to apply to intensity (x-axis) values.
+                     Default is 1.0 (no scaling).
+            scale_y: Scaling factor to apply to mdd (mean damage degree) values.
+                     Default is 1.0 (no scaling).
         
         Returns:
             ImpactFuncSet containing the loaded impact functions.
@@ -51,21 +53,23 @@ class ImpactFunctionManager:
             impf = ImpactFunc(
                 haz_type=self.hazard_type,
                 id=impf_id,
-                intensity=df_id['intensity'].values,
-                mdd=df_id['mdd'].values * scale_mdd,
+                intensity=df_id['intensity'].values * scale_x,
+                mdd=df_id['mdd'].values * scale_y,
                 paa=df_id['paa'].values
             )
             impf_list.append(impf)
         
         return ImpactFuncSet(impf_list)
     
-    def load_impf(self, scale_mdd: float = 1.0) -> ImpactFunc:
+    def load_impf(self, scale_x: float = 1.0, scale_y: float = 1.0) -> ImpactFunc:
         """Load impact function set from CSV with optional scaling.
         Fails if CSV contains multiple impact functions.
         
         Args:
-            scale_mdd: Scaling factor to apply to mdd (mean damage degree) values.
+            scale_x: Scaling factor to apply to intensity (x-axis) values.
                       Default is 1.0 (no scaling).
+            scale_y: Scaling factor to apply to mdd (mean damage degree) values.
+                      Default is 1.0 (no scaling). (Impacts are not capped at 1)
         
         Returns:
             Single ImpactFunc object.
@@ -73,7 +77,7 @@ class ImpactFunctionManager:
         Raises:
             ValueError: If the CSV contains multiple impact functions.
         """
-        impf_set = self.load_impfset(scale_mdd=scale_mdd)        
+        impf_set = self.load_impfset(scale_x=scale_x, scale_y=scale_y)
         impf_ids = impf_set.get_ids(haz_type=self.hazard_type)
         
         if len(impf_ids) > 1:
@@ -89,13 +93,13 @@ class ImpactFunctionManager:
         return impf_set.get_func(haz_type=self.hazard_type, fun_id=impf_id)
     
     @staticmethod
-    def apply_scaling(impf: ImpactFunc, x_scale: float, y_scale: float) -> ImpactFunc:
+    def apply_scaling(impf: ImpactFunc, scale_x: float, scale_y: float) -> ImpactFunc:
         """Scale intensity (x-axis) and mdd (y-axis) of impact function.
         
         Args:
             impf: Original impact function to scale.
-            x_scale: Scaling factor for intensity values (x-axis).
-            y_scale: Scaling factor for mdd values (y-axis).
+            scale_x: Scaling factor for intensity values (x-axis).
+            scale_y: Scaling factor for mdd values (y-axis).
         
         Returns:
             New ImpactFunc with scaled values.
@@ -103,8 +107,8 @@ class ImpactFunctionManager:
         scaled_impf = ImpactFunc(
             haz_type=impf.haz_type,
             id=impf.id,
-            intensity=impf.intensity * x_scale,
-            mdd=impf.mdd * y_scale,
+            intensity=impf.intensity * scale_x,
+            mdd=impf.mdd * scale_y,
             paa=impf.paa
         )
         return scaled_impf
@@ -134,11 +138,14 @@ class ImpactFunctionManager:
         
         impf_step = ImpactFunc.from_step_impf(
             intensity=(0, threshold_intensity, impf.intensity.max()),
-            haz_type=impf.hazard_type,
+            haz_type=impf.haz_type,
             mdd=(0, 1),
             paa=(1, 1),
             impf_id=impf_id
         )
+
+        if threshold <= impf.calc_mdr(threshold_intensity).max():
+            assert np.abs(impf.calc_mdr(threshold_intensity) - threshold) < 1e-3, "Step function threshold intensity does not match expected damage threshold"
         
         return ImpactFuncSet([impf_step])
     

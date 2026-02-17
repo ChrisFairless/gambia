@@ -100,6 +100,33 @@ COST_FUNCTIONS = {
 }
 
 
+# no no no this wasn't quite right
+
+# def calc_aal(impact, frequency):
+#     """Calculate AAL from exceedance curve data."""
+#     # THERE ARE A FEW WAYS TO DO THIS, THIS IS THE TRAPEZOIDAL APPROXIMATION
+#     assert np.all(np.diff(frequency) > 0), "Frequencies must be in ascending order"
+#     # There are a couple of choices to make here: what do we do for frequencies outside of the range of modelled values?
+#     # Choice: we assume an impact of 0 at a return period of 1, i.e. assume there are NOT floods every year.
+#     #         This is probably ok for The Gambia
+#     # Choice: we don't extrpolate above the highest RP modelled – this will result in an underestimation of AAL but 
+#     #         avoids assumptions about the tail of the curve. Instead it's the user's responsibility to cut off the 
+#     #         curve at a reasonable RP level before calculating AAL.
+#     frequency = np.append(frequency, 1)  # Add return period of 1 (frequency of 1) at the start
+#     impact = np.append(impact, 0)        # Assume impact of 0 at return period of 1
+#     aal = sum([0.5 * (impact[i] + impact[i-1]) * (frequency[i] - frequency[i-1]) for i in range(1, len(frequency))])
+#     assert 0.02 not in frequency, "Unexpected frequency value of 0.02 found in AAL calculation – this math for this analysis is set up so that if we meet an RP of 50 we're mathing in 1/rp rather than frequency, which is different"
+#     assert aal >= 0, "Calculated AAL should be non-negative (in the current setup)"
+#     return aal
+
+
+def calc_aal(impact, frequency):
+    """Calculate AAL from exceedance curve data."""
+    assert 0.2 not in frequency, "Unexpected frequency value of 0.02 found in AAL calculation – this math for this analysis is set up so that if we meet an RP of 50 we're mathing in 1/rp rather than frequency, which is different"
+    assert np.all(frequency > 0), "Frequencies must be positive"
+    aal = sum([i*f for i, f in zip(impact, frequency)])
+    assert aal >= 0, "Calculated AAL should be non-negative (in the current setup)"
+    return aal
 
 class ScoringEngine:
     """
@@ -180,7 +207,7 @@ class ScoringEngine:
             return pd.DataFrame(), pd.DataFrame()
         
         # Get all impact subtypes (main type + threshold types)
-        impact_subtypes = [impf_dict["impact_type"]] + list(impf_dict["thresholds"].keys())
+        impact_subtypes = impf_dict.impact_type_list(observations=observations)
         all_obs = []
         
         # Process each impact subtype
@@ -196,20 +223,29 @@ class ScoringEngine:
             
             if scenario_df.shape[0] == 0:
                 raise ValueError(
-                    f"Couldn't find exceedance curves for {impf_dict['exposure_type']} "
+                    f"{impf_dict['analysis_name']} - couldn't find exceedance curves for {impf_dict['exposure_type']} "
                     f"and {impact_subtype} – is there some unexpected combination of "
                     f"observations that wasn't modelled?"
                 )
             
-            # Calculate mean scenario curve
-            scenario_mean = scenario_df.groupby('frequency')['impact_fraction'].agg('mean')
-            scenario_aal = (scenario_mean.index.values * scenario_mean.values).sum()  # TODO correct this calculation
+            scenario_mean = {}
+            scenario_aal = {}
+            for rp_level in ['lower', 'mid', 'upper']:
+                if 'rp_level' in scenario_df.columns and np.all(scenario_df['rp_level'].notna()):
+                    scenario_mean[rp_level] = scenario_df[scenario_df['rp_level'] == rp_level].groupby('frequency')['impact_fraction'].agg('mean')
+                    scenario_aal[rp_level] = calc_aal(impact=scenario_mean[rp_level].values, frequency=scenario_mean[rp_level].index.values)
+                else:
+                    if 'rp_level' in scenario_df.columns:
+                        assert np.all(scenario_df['rp_level'].isna()), "Inconsistent rp_level data in curves"
+                    scenario_mean[rp_level] = scenario_df.groupby('frequency')['impact_fraction'].agg('mean')
+                    scenario_aal[rp_level] = calc_aal(impact=scenario_mean[rp_level].values, frequency=scenario_mean[rp_level].index.values)
             
             # Split observations by statistic type
             ix_aal = observations_subset['impact_statistic'] == 'aal'
             ix_event = observations_subset['impact_statistic'] == 'event'
             ix_rp = observations_subset['impact_statistic'] == 'rp'
             ix_event = ix_event + ix_rp
+            assert np.all(ix_aal + ix_event == True), "Unexpected impact_statistic values in observations"
             
             # Process event/RP observations (need interpolation)
             observations_event = observations_subset[ix_event]
@@ -217,22 +253,22 @@ class ScoringEngine:
                 # Interpolate for each return period bound
                 observations_event = observations_event.copy()
                 observations_event['model_lower'] = self._interpolate_curve_values(
-                    scenario_mean, observations_event['rp_lower']
+                    scenario_mean['lower'], observations_event['rp_lower']
                 )
                 observations_event['model_mid'] = self._interpolate_curve_values(
-                    scenario_mean, observations_event['rp_mid']
+                    scenario_mean['mid'], observations_event['rp_mid']
                 )
                 observations_event['model_upper'] = self._interpolate_curve_values(
-                    scenario_mean, observations_event['rp_upper']
+                    scenario_mean['upper'], observations_event['rp_upper']
                 )
             
             # Process AAL observations (no interpolation needed)
             observations_aal = observations_subset[ix_aal]
             if observations_aal.shape[0] > 0:
                 observations_aal = observations_aal.copy()
-                observations_aal['model_lower'] = scenario_aal
-                observations_aal['model_mid'] = scenario_aal
-                observations_aal['model_upper'] = scenario_aal
+                observations_aal['model_lower'] = scenario_aal['lower']
+                observations_aal['model_mid'] = scenario_aal['mid']
+                observations_aal['model_upper'] = scenario_aal['upper']
             
             # Combine AAL and event observations
             observations_combined = pd.concat([observations_aal, observations_event])

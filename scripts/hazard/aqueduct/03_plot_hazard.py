@@ -12,11 +12,13 @@ from climada.util.plot import plot_from_gdf
 
 country_list = ['Gambia']       # Set to None to plot all countries in the folder
 
-data_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/hazard/aqueduct/clipped/')
+data_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/hazard/aqueduct/haz/')
 plot_dir = Path('/Users/chrisfairless/Data/UNU/gambia2025/inputs/hazard/aqueduct/plots/')
 
 overwrite = True
 figsize = (27, 13)
+
+rps = [2, 5, 10, 25, 50, 100, 250, 500, 1000]
 
 # --------------------------------------------------------------
 
@@ -38,8 +40,6 @@ for country, country_iso in zip(country_list, country_iso_list):
         _, _, scenario, model, year = file.stem.split('_')
         haz = Hazard.from_hdf5(file)
         n_events = len(haz.event_id)
-        rps = [int(f) for f in haz.event_id]
-        n_rps = len(set(haz.frequency))
 
         if model != 'ALL':
             print(f'n_events: {n_events}')
@@ -72,6 +72,7 @@ for country, country_iso in zip(country_list, country_iso_list):
             plt.savefig(Path(plot_dir, out_filename))
 
         else:
+            # TODO: fix
             fig, axs = plt.subplots(
                 nrows=1, ncols=1,
                 figsize=figsize,

@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import os
 import copy
 import rasterio
@@ -10,12 +11,12 @@ from climada.util.api_client import Client
 from climada.hazard import Hazard
 
 country_list = ['Gambia']
-data_dir = '/Users/chrisfairless/Data/UNU/gambia2025/inputs/hazard/aqueduct/'
+data_dir = '/Users/chrisfairless/Data/UNU/gambia2025/inputs/hazard/flood_aqueduct/'
 
 # ------------------------------------------------------------------------------
 
 aqueduct_metadata_path = Path(data_dir, 'aqueduct_download_metadata.csv')
-clip_dir = Path(data_dir, 'clipped')
+clip_dir = Path(data_dir, 'haz')
 os.makedirs(clip_dir, exist_ok=True)
 
 out_list = []
@@ -24,6 +25,7 @@ client = Client()
 
 aqueduct_metadata = pd.read_csv(aqueduct_metadata_path)
 
+
 def combine_rps_to_hazard(df, clip, country_iso):
     print(df)
     print(f'filename_base: {df["filename_base"].values[0]}')
@@ -31,15 +33,36 @@ def combine_rps_to_hazard(df, clip, country_iso):
     print(f'Year: {df["year"].values[0]}')
     print('Models: ' + ', '.join(df['model'].unique()))
     print('Return periods: ' + ', '.join([str(r) for r in df['rp'].unique()]))
-    df['frequency'] = df.groupby(['filename_base', 'scenario', 'rp'])['rp'].transform(lambda x: 1 / (x * x.size))
+
+    min_rp = df['rp'].min()
+    df = df.sort_values(['scenario', 'year', 'rp', 'model'], ascending=False)
+
+    # Correct for the fact that the RPs are different from frequencies – they express cumulative risk at different thresholds, so we need to take the difference between them to get the 'frequency' of events. 
+    df['naive_frequency'] = df['rp'].apply(lambda x: 1/x)
+    df['naive_frequency_shifted'] = df.groupby(['filename_base', 'scenario', 'year', 'model'])['naive_frequency'].shift(1, fill_value=0)
+    df = df.sort_values(['scenario', 'year', 'model', 'rp'], ascending=False)
+    df['frequency'] = df['naive_frequency'] - df['naive_frequency_shifted']
+    df = df.sort_values(['scenario', 'year', 'rp', 'model'], ascending=True)
+
+    n_models = len(df['model'].unique())
+    if n_models > 1:
+        df['frequency'] = df['frequency'] / n_models
+        df['event_name'] = [f"{row['model']}_rp{row['rp']}" for _, row in df.iterrows()]
+    else:
+        df['event_name'] = df['rp'].apply(lambda rp: f"rp{rp}")
+    df.reset_index(drop=True, inplace=True)
+
+    assert(np.all(df['frequency'] > 0))
+    assert(np.isclose(df['frequency'].sum(), 1/min_rp))
+
     print(df)
     haz = Hazard.from_raster(
         files_intensity=df['local_path'].tolist(),
         files_fraction=None,
         attrs={
-            'event_name': df['rp'],
-            'event_id': df['rp'],
-            'frequency': df['frequency']
+            'event_name': df['event_name'].values,
+            'event_id': df['event_name'].values,
+            'frequency': df['frequency'].values
         },
         band=[1],
         haz_type='FL',
