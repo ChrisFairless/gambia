@@ -269,6 +269,10 @@ CONFIG = {
                     "impact_type": "economic_loss",
                     "dir": "impact_functions/uncalibrated/",
                     "files": "impf_river_flood_housing_uncalibrated.csv",
+                    "thresholds": {
+                        'damaged': 0.5,
+                        'destroyed': 0.8
+                    },
                     "scale_y": 3,
                     "enabled": True
                 },
