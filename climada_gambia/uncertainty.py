@@ -469,7 +469,7 @@ def gather_uncertainty_results(impf_dict_list: list, quantiles: tuple=(0.1, 0.9)
     for impf_dict in impf_dict_list:
         total_exposure = get_total_exposed_value(impf_dict["exposure_type"], usd=(impf_dict["impact_type"]=='economic_loss'))
 
-        for scenario in impf_dict["hazard_node"].keys():
+        for scenario in impf_dict["scenarios"]:
             uncertainty_output_paths = impf_dict.uncertainty_results_paths(scenario=scenario, create=False)
             if not os.path.exists(uncertainty_output_paths["rps"]):
                 raise FileNotFoundError(f"Uncertainty results file does not exist at {uncertainty_output_paths['rps']}")
