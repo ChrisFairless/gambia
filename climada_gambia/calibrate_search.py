@@ -233,7 +233,7 @@ def read_calibrated_scaling_factors(impf_dict_in, rp_level, a_little_judgement=T
     if a_little_judgement:
         # Check if there are other parameter combinations with similar scores (within a few % of the best score) and if so, 
         # choose the one with scale_x and scale_y closest to 1 to avoid overfitting
-        sensitivity = 0.05
+        sensitivity = 0.02
         best_score = params_df['score'].values[ix_score]
 
         # Move parameters closer to scale_x = 1 and scale_y = 1, within the sensitivity range
