@@ -12,7 +12,7 @@ class MetadataConfig:
     def __init__(self, analysis_name: Optional[str] = None, data: Optional[dict] = None):
         self._initializing = True
         if not analysis_name and "analysis_name" not in (data or {}):
-            analysis_name = CONFIG["default_analysis_name"]
+            raise ValueError("Must provide 'analysis_name' either as an argument or in the input dictionary.")
         if data:
             self._data = copy.deepcopy(data)
         else:

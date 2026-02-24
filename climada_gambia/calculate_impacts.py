@@ -24,6 +24,9 @@ from climada_gambia.metadata_impact import MetadataImpact, VALID_THRESHOLD_IMPAC
 
 logging.getLogger("climada").setLevel(logging.WARNING)
 
+ANALYSIS_NAME = "uncalibrated"
+overwrite = True
+
 max_iters: int = 16
 SAVE_MAT: bool = False   # Save impact matrices: these are not needed anywhere but you might want them for mapping
 
@@ -343,7 +346,7 @@ def write_fitted_thresholds_output(
     fitted_output.to_csv(fitted_output_path, index=False)
 
 
-def main(overwrite: bool, scale_impacts: bool) -> None:
+def main(analysis_name: str, overwrite: bool, scale_impacts: bool) -> None:
     # conf_path = Path(CONF_PATH)
     # if not conf_path.exists():
     #     raise FileExistsError(f"conf.json not found at {conf_path}. Adjust CONF_PATH or location.")
@@ -360,39 +363,38 @@ def main(overwrite: bool, scale_impacts: bool) -> None:
     # Gather all impact calculations:
     impf_list = utils_config.gather_impact_calculation_metadata()
 
-    for analysis_name in {conf["default_analysis_name"], conf["uncalibrated_analysis_name"]}:
-        print(f"=== Running analysis: {analysis_name} ===")
+    print(f"=== Running analysis: {analysis_name} ===")
 
-        for impf_dict_analysis in impf_list:
-            impf_dict = copy.deepcopy(impf_dict_analysis)
-            impf_dict['analysis_name'] = analysis_name
+    for impf_dict_analysis in impf_list:
+        impf_dict = copy.deepcopy(impf_dict_analysis)
+        impf_dict['analysis_name'] = analysis_name
 
-            print("-----------------------------------------------------")
-            print(f"Calculating impacts for {impf_dict['exposure_type']}: {impf_dict['exposure_source']} - {impf_dict['hazard_type']}: {impf_dict['hazard_source']}")
+        print("-----------------------------------------------------")
+        print(f"Calculating impacts for {impf_dict['exposure_type']}: {impf_dict['exposure_source']} - {impf_dict['hazard_type']}: {impf_dict['hazard_source']}")
 
-            if not impf_dict["exposure_node"]:
-                print(' MISSING: No exposure configuration found as specified in impact functions. Skipping')
-                continue
+        if not impf_dict["exposure_node"]:
+            print(' MISSING: No exposure configuration found as specified in impact functions. Skipping')
+            continue
 
-            if not impf_dict["hazard_node"]:
-                print(' MISSING: No hazard configuration found as specified in impact functions. Skipping')
-                continue
+        if not impf_dict["hazard_node"]:
+            print(' MISSING: No hazard configuration found as specified in impact functions. Skipping')
+            continue
 
-            try:
-                _ = calculate_impacts(
-                    impf_dict,
-                    scenario=None,
-                    scale_impacts=scale_impacts,
-                    fit_thresholds=False,
-                    write_extras=True,
-                    overwrite=overwrite
-                )
-            except Exception as e:
-                print(' ERROR: Failed to calculate impacts')
-                print(f'{e}')
-                raise Exception(e)
-                # continue
+        try:
+            _ = calculate_impacts(
+                impf_dict,
+                scenario=None,
+                scale_impacts=scale_impacts,
+                fit_thresholds=False,
+                write_extras=True,
+                overwrite=overwrite
+            )
+        except Exception as e:
+            print(' ERROR: Failed to calculate impacts')
+            print(f'{e}')
+            raise Exception(e)
+            # continue
 
 
 if __name__ == "__main__":
-    main(overwrite=True, scale_impacts=False)
+    main(analysis_name=ANALYSIS_NAME, overwrite=overwrite, scale_impacts=False)

@@ -66,8 +66,8 @@ class MetadataImpact(MetadataConfig):
         # Add analysis_name from config
         if analysis_name is not None:
             impf['analysis_name'] = analysis_name
-        else:
-            impf['analysis_name'] = CONFIG["default_analysis_name"]
+        if 'analysis_name' not in impf:
+            raise ValueError("Must provide 'analysis_name' either as an argument or in the input dictionary.")
         
         # Add hazard metadata
         impf['hazard_type'] = hazard_type

@@ -1,7 +1,6 @@
 CONFIG = {
     "data_dir": "/Users/chrisfairless/Data/UNU/gambia2025/inputs",
-    "output_dir": "/Users/chrisfairless/Data/UNU/gambia2025/outputs/v2",
-    "default_analysis_name": "deleteme",
+    "output_dir": "/Users/chrisfairless/Data/UNU/gambia2025/outputs/v3",
     "uncalibrated_analysis_name": "uncalibrated",  # Used for calculating uncalibrated exceedance curves
     "hazard": {
         # hazards are stored in the input data folder / hazard / f'{hazard_type}_{hazard_source}' / haz
