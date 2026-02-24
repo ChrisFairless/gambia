@@ -25,8 +25,8 @@ from climada.engine.unsequa import InputVar, UncOutput, CalcImpact
 overwrite = True
 
 ANALYSIS_NAME = "calibration"
-N_SIMULATIONS = 2**4
-PARALLELISE = True
+N_SIMULATIONS = 2**7
+PARALLELISE = 4
 SEED = 1312
 POP_GROWTH_2050 = 4301896 / 2822093 
 # Ratio of 2050 population to 2020 population in Gambia
@@ -51,7 +51,7 @@ impf_filter = {
 
 impf_filter = {}
 
-plot_exposure_types = ['agriculture', 'livestock', 'manufacturing', 'energy', 'services']
+core_exposure_types = ['agriculture', 'livestock', 'manufacturing', 'energy', 'services']
 
 YMAX = 7.5  # force y-axis limit (percent), Set to None to auto-adjust
 
@@ -206,18 +206,13 @@ def run_uncertainty_analysis(impf_dict: MetadataImpact, n_simulations: int = N_S
 def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9), overwrite=False, **kwargs):
     print(f"Plotting uncertainty analyses")
     impf_dict_list = copy.deepcopy(impf_dict_list)
-    if plot_exposure_types is not None:
-        impf_dict_list = [impf_dict for impf_dict in impf_dict_list if impf_dict['exposure_type'] in plot_exposure_types]
+    if core_exposure_types is not None:
+        impf_dict_list = [impf_dict for impf_dict in impf_dict_list if impf_dict['exposure_type'] in core_exposure_types]
 
-    df_all = gather_uncertainty_results(impf_dict_list, quantiles=quantiles, normalise_by_exposure=False)
-    df_all_norm = gather_uncertainty_results(impf_dict_list, quantiles=quantiles, normalise_by_exposure=True)
+    df_all, df_aai_all = gather_uncertainty_results(impf_dict_list, quantiles=quantiles, normalise_by_exposure=False)
+    df_all_norm, df_aai_all_norm = gather_uncertainty_results(impf_dict_list, quantiles=quantiles, normalise_by_exposure=True)
 
-    sector_sizes = {impf_dict['exposure_type']: get_total_exposed_value(impf_dict['exposure_type'], usd=True) for impf_dict in impf_dict_list}
-    sector_sizes_df = pd.DataFrame(sector_sizes.items(), columns=['exposure_type', 'total_exposed'])
-    sector_sizes_df['weight'] = sector_sizes_df['total_exposed'] / sector_sizes_df['total_exposed'].sum()
-    total_exposed_litpop = get_total_exposed_value('economic_assets', usd=True)
-    total_exposed_ratio = total_exposed_litpop / sector_sizes_df['total_exposed'].sum()
-    assert np.isclose(sum(sector_sizes_df['weight']), 1.0), "Sector weights do not sum to 1.0"
+    total_exposed_ratio = get_total_exposed_ratio(impf_dict_list)
     print(f"Using an adjustment factor of {total_exposed_ratio:.2f} to normalise impacts to match LitPop")
 
     impf_dict_all = {
@@ -251,6 +246,9 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     (df_all_norm['rp'] <= 100)
                 ].merge(sector_sizes_df, on='exposure_type', how='left').reset_index(drop=True)
                 df_exp[['median', 'low', 'high']] = df_exp[['median', 'low', 'high']].mul(df_exp['weight'], axis=0)
+                # Yes, we're taking the sum of different sectors' risk quantiles here, which means we're probably 
+                # overestimating the interquantile range that we're modelling. But I'm ok with that for now; it's just
+                # for the plotting.
                 df_exp[['median', 'low', 'high']] = df_exp.groupby(['scenario', 'rp', 'rp_name'])[['median', 'low', 'high']].transform('sum')
                 df_exp = df_exp.sort_values('rp')
             else:
@@ -259,8 +257,6 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     (df_all_norm['scenario'] == 'present') & 
                     (df_all_norm['rp'] <= 100)
                 ].sort_values('rp')
-            aal = df_all_norm[df_all_norm['rp_name'] == 'aai_agg'].loc[:, 'median'].values[0]
-            df_exp = df_exp[df_exp['rp'] >= 0]
             ax.fill_between(df_exp['rp'], df_exp['low'], df_exp['high'], color='blue', alpha=0.3, label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range')
             ax.plot(df_exp['rp'], df_exp['median'], color='black', label=f'Median')
             # ax.axhline(aal, color='blue', linestyle='--')
@@ -305,8 +301,6 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     (df_all_norm['scenario'] == 'present') & 
                     (df_all_norm['rp'] <= 100)
                 ].sort_values('rp')
-            aal = df_all_norm[df_all_norm['rp_name'] == 'aai_agg'].loc[:, 'median'].values[0]
-            df_exp = df_exp[df_exp['rp'] >= 0]
             ax.fill_between(df_exp['rp'], df_exp['low'], df_exp['high'], color='blue', alpha=0.3, label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range (present)')
             ax.plot(df_exp['rp'], df_exp['median'], color='black', label=f'Median (present)')
             # ax.axhline(aal, color='blue', label='AAL (present)', linestyle='--')
@@ -326,7 +320,6 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     (df_all_norm['scenario'] == 'RCP8.5_2050') & 
                     (df_all_norm['rp'] <= 100)
                 ].sort_values('rp')
-            aal = df_all_norm[df_all_norm['rp_name'] == 'aai_agg'].loc[:, 'median'].values[0]
             df_exp = df_exp[df_exp['rp'] >= 0]
             ax.fill_between(df_exp['rp'], df_exp['low'], df_exp['high'], color='gold', alpha=0.5, label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range (RCP8.5 2050)')
             ax.plot(df_exp['rp'], df_exp['median'], color='darkorange', label=f'Median (RCP8.5 2050)')
@@ -355,29 +348,25 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
             exposure_type = impf_dict['exposure_type']
             # Present
             if exposure_type == 'all':
-                curr_risk = df_all[
-                    (df_all['rp_name'] == 'aai_agg') &
-                    (df_all['scenario'] == 'present')
+                curr_risk = df_aai_all[
+                    (df_aai_all['scenario'] == 'present')
                 ].loc[:, 'median'].values.sum() * total_exposed_ratio
             else:
-                curr_risk = df_all[
-                    (df_all['exposure_type'] == exposure_type) & 
-                    (df_all['rp_name'] == 'aai_agg') &
-                    (df_all['scenario'] == 'present')
+                curr_risk = df_aai_all[
+                    (df_aai_all['exposure_type'] == exposure_type) & 
+                    (df_aai_all['scenario'] == 'present')
                 ].loc[:, 'median'].values[0]
             risk_dev = curr_risk * POP_GROWTH_2050
 
             # Future
             if exposure_type == 'all':
-                fut_risk = df_all[
-                    (df_all['rp_name'] == 'aai_agg') &
-                    (df_all['scenario'] == 'RCP8.5_2050')
+                fut_risk = df_aai_all[
+                    (df_aai_all['scenario'] == 'RCP8.5_2050')
                 ].loc[:, 'median'].values.sum() * total_exposed_ratio * POP_GROWTH_2050
             else:
-                fut_risk = df_all[
-                    (df_all['exposure_type'] == exposure_type) & 
-                    (df_all['rp_name'] == 'aai_agg') &
-                    (df_all['scenario'] == 'RCP8.5_2050')
+                fut_risk = df_aai_all[
+                    (df_aai_all['exposure_type'] == exposure_type) & 
+                    (df_aai_all['scenario'] == 'RCP8.5_2050')
                 ].loc[:, 'median'].values[0] * POP_GROWTH_2050
 
             present_year = 2025
@@ -464,15 +453,26 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
         plt.close('all')
 
 
+def get_total_exposed_ratio(impf_dict_list: list):
+    sector_sizes = {impf_dict['exposure_type']: get_total_exposed_value(impf_dict['exposure_type'], usd=True) for impf_dict in impf_dict_list}
+    sector_sizes_df = pd.DataFrame(sector_sizes.items(), columns=['exposure_type', 'total_exposed'])
+    sector_sizes_df['weight'] = sector_sizes_df['total_exposed'] / sector_sizes_df['total_exposed'].sum()
+    total_exposed_litpop = get_total_exposed_value('economic_assets', usd=True)
+    total_exposed_ratio = total_exposed_litpop / sector_sizes_df['total_exposed'].sum()
+    assert np.isclose(sum(sector_sizes_df['weight']), 1.0), "Sector weights do not sum to 1.0"
+    return total_exposed_ratio
+
+
 def gather_uncertainty_results(impf_dict_list: list, quantiles: tuple=(0.1, 0.9), normalise_by_exposure: bool = True):
     df_all = []
+    df_aai_all = []
     for impf_dict in impf_dict_list:
         total_exposure = get_total_exposed_value(impf_dict["exposure_type"], usd=(impf_dict["impact_type"]=='economic_loss'))
 
         for scenario in impf_dict["hazard_node"].keys():
             uncertainty_output_paths = impf_dict.uncertainty_results_paths(scenario=scenario, create=False)
             if not os.path.exists(uncertainty_output_paths["rps"]):
-                raise FileNotFoundError(f"Uncertainty results file does not exist at {uncertainty_output_paths['rps']}, cannot plot results.")
+                raise FileNotFoundError(f"Uncertainty results file does not exist at {uncertainty_output_paths['rps']}")
 
             uncertainty_df = pd.read_csv(uncertainty_output_paths["csv"])
             uncertainty_aai = uncertainty_df['aai_agg']
@@ -483,15 +483,11 @@ def gather_uncertainty_results(impf_dict_list: list, quantiles: tuple=(0.1, 0.9)
             uncertainty_df = uncertainty_df[uncertainty_df.columns[::-1]]
             rp = pd.Series([float(s[2:len(s)+1]) for s in uncertainty_df.columns])
 
-            # I don't trust CLIMADA's AAI calculations here, so we recalculate
-            naive_frequency = np.array([1/x for x in rp])
-            naive_frequency_shifted = np.concatenate([[0], naive_frequency[:-1]])
-            freq = naive_frequency - naive_frequency_shifted
-
-            partial_calc_aal = partial(calc_aal, frequency=freq)
-            aai = uncertainty_df.apply(partial_calc_aal, axis=1)
-
-            print([(x, y) for x, y in zip(uncertainty_aai.values, aai)])
+            # Recalculate AAL using proper event frequencies (not exceedance frequencies)
+            # rp is in descending order (1000, 500, ..., 2), so exceedance_freq is ascending
+            exceedance_frequency = np.array([1/x for x in rp])
+            exceedance_frequency_shifted = np.concatenate([[0], exceedance_frequency[:-1]])
+            event_frequency = exceedance_frequency - exceedance_frequency_shifted
 
             if normalise_by_exposure:
                 norm = total_exposure
@@ -514,8 +510,27 @@ def gather_uncertainty_results(impf_dict_list: list, quantiles: tuple=(0.1, 0.9)
                 'high': u_high.values
             }).set_index(['exposure_type', 'scenario', 'rp_name', 'rp'])
             df_all.append(df)
+
+            partial_calc_aal = partial(calc_aal, event_frequency=event_frequency)
+            aai = uncertainty_df.apply(partial_calc_aal, axis=1)
+            assert np.allclose(aai, uncertainty_aai.values), "Calculated AAI does not match AAI in uncertainty results file, check calculations"
+            aai_mean = 100 * aai.mean() / norm
+            aai_median = 100 * aai.quantile(0.5) / norm
+            aai_low = 100 * aai.quantile(quantiles[0]) / norm
+            aai_high = 100 * aai.quantile(quantiles[1]) / norm
+            df_aai = {
+                'exposure_type': impf_dict['exposure_type'],
+                'scenario': scenario,
+                'mean': aai_mean,
+                'median': aai_median,
+                'low': aai_low,
+                'high': aai_high
+            }
+            df_aai_all.append(df_aai)
+
     df_all = pd.concat(df_all).reset_index()
-    return df_all
+    df_aai_all = pd.DataFrame(df_aai_all).reset_index(drop=True)
+    return df_all, df_aai_all
 
 def main(analysis_name, impf_filter, overwrite):
     impf_dict_list = utils_config.gather_impact_calculation_metadata(filter=impf_filter, analysis_name=analysis_name)

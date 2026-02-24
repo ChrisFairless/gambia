@@ -300,9 +300,9 @@ class ObservationLoader:
         
         # Average across exceedance curves from different hazard sources if multiple present
         exposure_unit = uncalibrated_df['unit'].values[0]
-        uncalibrated_df = uncalibrated_df[['frequency', 'impact', 'impact_fraction']]
-        uncalibrated_df = uncalibrated_df.reset_index(drop=True).groupby('frequency').agg('mean').reset_index()
-        uncalibrated_df['rp'] = 1 / uncalibrated_df['frequency']
+        uncalibrated_df = uncalibrated_df[['exceedance_frequency', 'impact', 'impact_fraction']]
+        uncalibrated_df = uncalibrated_df.reset_index(drop=True).groupby('exceedance_frequency').agg('mean').reset_index()
+        uncalibrated_df['rp'] = 1 / uncalibrated_df['exceedance_frequency']
         
         # Calculate weights
         total_weight = row['weight'].values[0]

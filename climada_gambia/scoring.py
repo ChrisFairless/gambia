@@ -100,32 +100,62 @@ COST_FUNCTIONS = {
 }
 
 
-# no no no this wasn't quite right
+def calc_aal(impact, event_frequency):
+    """Calculate Average Annual Loss/Impact from event-based data.
 
-# def calc_aal(impact, frequency):
-#     """Calculate AAL from exceedance curve data."""
-#     # THERE ARE A FEW WAYS TO DO THIS, THIS IS THE TRAPEZOIDAL APPROXIMATION
-#     assert np.all(np.diff(frequency) > 0), "Frequencies must be in ascending order"
-#     # There are a couple of choices to make here: what do we do for frequencies outside of the range of modelled values?
-#     # Choice: we assume an impact of 0 at a return period of 1, i.e. assume there are NOT floods every year.
-#     #         This is probably ok for The Gambia
-#     # Choice: we don't extrpolate above the highest RP modelled – this will result in an underestimation of AAL but 
-#     #         avoids assumptions about the tail of the curve. Instead it's the user's responsibility to cut off the 
-#     #         curve at a reasonable RP level before calculating AAL.
-#     frequency = np.append(frequency, 1)  # Add return period of 1 (frequency of 1) at the start
-#     impact = np.append(impact, 0)        # Assume impact of 0 at return period of 1
-#     aal = sum([0.5 * (impact[i] + impact[i-1]) * (frequency[i] - frequency[i-1]) for i in range(1, len(frequency))])
-#     assert 0.02 not in frequency, "Unexpected frequency value of 0.02 found in AAL calculation – this math for this analysis is set up so that if we meet an RP of 50 we're mathing in 1/rp rather than frequency, which is different"
-#     assert aal >= 0, "Calculated AAL should be non-negative (in the current setup)"
-#     return aal
+    Uses: AAL = Σ impact_i × event_frequency_i
+
+    IMPORTANT: event_frequency is NOT exceedance frequency (1/return_period).
+    For return-period-based hazards, event frequencies are the differences
+    between consecutive exceedance frequencies:
+        event_freq_i = exceedance_freq_i - exceedance_freq_(i+1)
+    They represent the probability of each discrete severity bin.
+
+    Args:
+        impact: Array of impact values per event (or per RP after grouping)
+        event_frequency: Array of event frequencies (NOT exceedance frequencies)
+    """
+    impact = np.asarray(impact, dtype=float)
+    event_frequency = np.asarray(event_frequency, dtype=float)
+    assert np.all(event_frequency > 0), "Event frequencies must be positive"
+    aal = np.sum(impact * event_frequency)
+    assert aal >= 0, "Calculated AAL should be non-negative"
+    return aal
 
 
-def calc_aal(impact, frequency):
-    """Calculate AAL from exceedance curve data."""
-    assert 0.2 not in frequency, "Unexpected frequency value of 0.02 found in AAL calculation – this math for this analysis is set up so that if we meet an RP of 50 we're mathing in 1/rp rather than frequency, which is different"
-    assert np.all(frequency > 0), "Frequencies must be positive"
-    aal = sum([i*f for i, f in zip(impact, frequency)])
-    assert aal >= 0, "Calculated AAL should be non-negative (in the current setup)"
+def calc_aal_trapezoidal(impact, exceedance_frequency):
+    """Calculate AAL using trapezoidal integration over exceedance frequencies.
+
+    Mathematically equivalent to calc_aal when event frequencies are consistent,
+    but works directly with exceedance frequencies (1/return_period).
+    Useful as a cross-check validation.
+
+    Assumes impact drops to 0 beyond the rarest modelled event.
+
+    Args:
+        impact: Array of impact values, one per return period level
+        exceedance_frequency: Array of exceedance frequencies (= 1/return_period)
+    """
+    impact = np.asarray(impact, dtype=float)
+    exceedance_frequency = np.asarray(exceedance_frequency, dtype=float)
+    assert np.all(exceedance_frequency > 0), "Exceedance frequencies must be positive"
+
+    # Sort by exceedance frequency descending (most frequent / lowest RP first)
+    sort_idx = np.argsort(exceedance_frequency)[::-1]
+    exc_sorted = exceedance_frequency[sort_idx]
+    imp_sorted = impact[sort_idx]
+
+    # Assumption: impacts are constant beyond the rarest modelled event, so we can append a final point at (exceedance_freq=0, impact=imp_sorted[-1])
+    exc_sorted = np.append(exc_sorted, 0)
+    imp_sorted = np.append(imp_sorted, imp_sorted[-1])
+    # Assumption: impacts are zero at frequency = 1 (RP=1), so we can prepend a point at (exceedance_freq=1, impact=0)
+    # For Aqueduct where the 2-year RP events are usually zero, this is a reasonable assumption.
+    exc_sorted = np.insert(exc_sorted, 0, 1)
+    imp_sorted = np.insert(imp_sorted, 0, 0)
+
+    # Trapezoidal: AAL = Σ 0.5 * (L_i + L_{i+1}) * |Δν|
+    aal = np.sum(0.5 * (imp_sorted[:-1] + imp_sorted[1:]) * np.abs(np.diff(exc_sorted)))
+    assert aal >= 0, "Calculated AAL should be non-negative"
     return aal
 
 class ScoringEngine:
@@ -179,7 +209,7 @@ class ScoringEngine:
         
         Args:
             curves: DataFrame with exceedance curves. Must include columns:
-                   scenario, frequency, impact_fraction, impact_type
+                   scenario, event_frequency, exceedance_frequency, impact_fraction, impact_type
             observations: DataFrame with observation data. Must include columns:
                          exposure_type, impact_type, impact_statistic, 
                          value_fraction, rp_lower, rp_mid, rp_upper, weight
@@ -232,13 +262,30 @@ class ScoringEngine:
             scenario_aal = {}
             for rp_level in ['lower', 'mid', 'upper']:
                 if 'rp_level' in scenario_df.columns and np.all(scenario_df['rp_level'].notna()):
-                    scenario_mean[rp_level] = scenario_df[scenario_df['rp_level'] == rp_level].groupby('frequency')['impact_fraction'].agg('mean')
-                    scenario_aal[rp_level] = calc_aal(impact=scenario_mean[rp_level].values, frequency=scenario_mean[rp_level].index.values)
+                    filtered = scenario_df[scenario_df['rp_level'] == rp_level]
                 else:
                     if 'rp_level' in scenario_df.columns:
                         assert np.all(scenario_df['rp_level'].isna()), "Inconsistent rp_level data in curves"
-                    scenario_mean[rp_level] = scenario_df.groupby('frequency')['impact_fraction'].agg('mean')
-                    scenario_aal[rp_level] = calc_aal(impact=scenario_mean[rp_level].values, frequency=scenario_mean[rp_level].index.values)
+                    filtered = scenario_df
+
+                grouped = filtered.groupby('exceedance_frequency').agg(
+                    impact_fraction=('impact_fraction', 'mean'),
+                    event_frequency=('event_frequency', 'sum')
+                )
+                # Normalize event frequency by number of hazard files to avoid double-counting
+                n_haz_files = filtered['hazard_filepath'].nunique() if 'hazard_filepath' in filtered.columns else 1
+                if n_haz_files > 1:
+                    grouped['event_frequency'] /= n_haz_files
+
+                # Validate: event frequencies should sum to the max exceedance frequency
+                assert np.isclose(grouped['event_frequency'].sum(), grouped.index.max(), rtol=1e-4), \
+                    f"Event frequencies ({grouped['event_frequency'].sum()}) should sum to max exceedance frequency ({grouped.index.max()})"
+
+                scenario_mean[rp_level] = grouped['impact_fraction']
+                scenario_aal[rp_level] = calc_aal(
+                    impact=grouped['impact_fraction'].values,
+                    event_frequency=grouped['event_frequency'].values
+                )
             
             # Split observations by statistic type
             ix_aal = observations_subset['impact_statistic'] == 'aal'
@@ -326,15 +373,16 @@ class ScoringEngine:
         Interpolate exceedance curve to specific return period values.
         
         Args:
-            scenario_mean: Series with frequency as index, impact_fraction as values
+            scenario_mean: Series with exceedance_frequency as index, impact_fraction as values.
+                          Return periods are computed as 1/exceedance_frequency.
             return_periods: Series of return period values to interpolate to
             
         Returns:
             Array of interpolated impact fraction values
         """
-        # Convert frequency to return period (rp = 1/freq)
-        frequencies = scenario_mean.index.values
-        rp_curve = frequencies ** -1
+        # Convert exceedance frequency to return period (rp = 1/exceedance_freq)
+        exceedance_frequencies = scenario_mean.index.values
+        rp_curve = exceedance_frequencies ** -1
         impact_curve = scenario_mean.values
         
         # Reverse arrays for interpolation (np.interp requires increasing x values)

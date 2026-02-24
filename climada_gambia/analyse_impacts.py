@@ -177,17 +177,15 @@ def one_exceedance_plot(
 
     for axis, impact_subtype in zip(axes, impact_subtypes):
         curves = curves_all[curves_all['impact_type'] == impact_subtype]
-        curves['rp'] = 1/curves['frequency']
         unit = curves['unit'].iloc[0]
         assert curves['unit'].nunique() == 1, "Multiple units found in curves data"
 
-        axis.set_xlabel("Return period (year)")
-        # imp_unit = "USD" if impact_subtype == "economic_loss" else unit   # clumsy, sorry
+        axis.set_xlabel("Return period (years)")
         imp_unit = unit if scaling == "absolute" else "fraction"
         axis.set_title(f"{impact_subtype} ({imp_unit})")
         axis.set_ylabel(f"{imp_unit}")
         if rp_max is None:
-            rp_max = max(curves['rp'])
+            rp_max = max(curves['return_period'])
         axis.set_xlim(1, rp_max)
         
         # Plot exceedance curves
@@ -198,27 +196,31 @@ def one_exceedance_plot(
             scenario_df = curves[curves['scenario'] == scenario]
             for haz_filepath in set(scenario_df['hazard_filepath']):
                 sub_df = scenario_df[scenario_df['hazard_filepath'] == haz_filepath]
-                axis.plot(sub_df['rp'], sub_df[plot_var], color=COLOURS[scenario]['normal'], alpha=0.3)
-            
-            scenario_mean = scenario_df.groupby('frequency')[plot_var].agg('mean')
-            scenario_aal = calc_aal(impact=scenario_mean.values, frequency=scenario_mean.index.values)
+                axis.plot(sub_df['return_period'], sub_df[plot_var], color=COLOURS[scenario]['normal'], alpha=0.3)
 
-            # if 'rp_level' in scenario_df.columns:
-            #     n_lines = scenario_df[['hazard_filepath', 'rp_level']].nunique().values[0]
-            # else:
-            #     n_lines = scenario_df[['hazard_filepath']].nunique().values[0]
+            # Group by exceedance_frequency (= 1/return_period) to get per-RP statistics
+            scenario_grouped = scenario_df.groupby('exceedance_frequency').agg(
+                **{plot_var: (plot_var, 'mean'), 'event_frequency': ('event_frequency', 'sum')}
+            )
+            # Normalize event frequency by number of hazard files to avoid double-counting
+            n_haz_files = scenario_df['hazard_filepath'].nunique()
+            if n_haz_files > 1:
+                scenario_grouped['event_frequency'] /= n_haz_files
+            scenario_mean = scenario_grouped[plot_var]
+            scenario_aal = calc_aal(impact=scenario_grouped[plot_var].values, event_frequency=scenario_grouped['event_frequency'].values)
+
             n_lines = scenario_df[['hazard_filepath', 'rp_level']].nunique().values[0]
 
             if n_lines <= 5:
-                range_min = scenario_df.groupby(['frequency']).agg({plot_var: 'min'}).reset_index()[plot_var].values
-                range_max = scenario_df.groupby(['frequency']).agg({plot_var: 'max'}).reset_index()[plot_var].values
                 axis.fill_between(scenario_mean.index**-1, range_min, range_max, color=COLOURS[scenario]['normal'], alpha=0.2, label='Uncertainty range')
+                range_min = scenario_df.groupby(['exceedance_frequency']).agg({plot_var: 'min'}).reset_index()[plot_var].values
+                range_max = scenario_df.groupby(['exceedance_frequency']).agg({plot_var: 'max'}).reset_index()[plot_var].values
             else:
-                quantile_0_2 = scenario_df.groupby(['frequency'])[plot_var].quantile(0.2).values
-                quantile_0_8 = scenario_df.groupby(['frequency'])[plot_var].quantile(0.8).values
                 axis.fill_between(scenario_mean.index**-1, quantile_0_2, quantile_0_8, color=COLOURS[scenario]['normal'], alpha=0.2, label='80% uncertainty range')
 
             axis.plot(scenario_mean.index**-1, scenario_mean.values, color=COLOURS[scenario]['strong'], linewidth=2, label=f'Exceedance: {scenario}')
+                quantile_0_2 = scenario_df.groupby(['exceedance_frequency'])[plot_var].quantile(0.2).values
+                quantile_0_8 = scenario_df.groupby(['exceedance_frequency'])[plot_var].quantile(0.8).values
             axis.hlines(scenario_aal, xmin=1, xmax=rp_max, color=COLOURS[scenario]['normal'], linestyle='--', linewidth=1)
             axis.plot(1, scenario_aal, marker='s', color=COLOURS[scenario]['normal'], markersize=4, label=f"AAL modelled: {float('%.3g' % scenario_aal)}")
 
@@ -344,6 +346,32 @@ def get_impf_exceedance_curves(impf_dict: dict, scenario_list: list, impact_type
 
 
 def make_exceedance_curve(scenario, impf_dict, imp, impact_type, haz_filepath, total_exposed):
+    event_freqs = np.array(imp.frequency)
+    assert np.all(np.diff(event_freqs) <= 0)  # ascending RP, descending frequency
+
+    # Compute exceedance frequencies from event frequencies.
+    # Events at the same return period share the same event_frequency.
+    # Exceedance frequency = cumulative sum of event frequencies from rarest to most frequent.
+    unique_event_freqs = np.unique(event_freqs)  # sorted ascending by numpy
+
+    # annoyingly, some event frequencies are duplicated, but not all, so we have to identify these and correct
+    count_event_freqs = np.array([len(event_freqs[event_freqs == f]) for f in unique_event_freqs])
+    rep_events = count_event_freqs.min()
+    n_freqs = len(event_freqs) / rep_events
+    assert int(n_freqs) == n_freqs
+    n_freqs = int(n_freqs)
+
+    assert np.all([pd.Series(event_freqs[rep_events * i: rep_events * i + 1]).nunique() == 1 for i in range(0, n_freqs)]), "Event frequencies are not unique within each (assumed) return period"
+    unique_event_freqs = [event_freqs[rep_events * i] for i in range(0, n_freqs)]
+    total_per_rp = np.array([event_freqs[rep_events * i: rep_events * i + 1].sum() for i in range(0, n_freqs)])   # not really necessary i guess
+    exceedance_freqs = np.cumsum(total_per_rp[::-1])[::-1]
+    return_periods = 1.0 / exceedance_freqs
+    assert set(return_periods) == set([2, 5, 10, 25, 50, 100, 250, 500, 1000]), f"Unexpected aqueduct return periods: {return_periods}"
+
+    # Validate: event frequencies should sum to the max exceedance frequency (= 1/min_RP)
+    assert np.isclose(event_freqs.sum(), exceedance_freqs.max(), rtol=1e-4), \
+        f"Event frequencies ({event_freqs.sum()}) should sum to max exceedance frequency ({exceedance_freqs.max()})"
+
     rp_data = [
         {
             "scenario": scenario,
@@ -355,11 +383,15 @@ def make_exceedance_curve(scenario, impf_dict, imp, impact_type, haz_filepath, t
             "impact_type": impact_type,
             "total_exposed_value": total_exposed,
             "unit": imp.unit,
-            "frequency": freq,
-            "impact": i,
-            "impact_fraction": i / total_exposed
-        } for freq, i in zip(
-            imp.frequency,
+            "event_frequency": ef,
+            "exceedance_frequency": xf,
+            "return_period": rp,
+            "impact": imp_val,
+            "impact_fraction": imp_val / total_exposed
+        } for ef, xf, rp, imp_val in zip(
+            event_freqs,
+            exceedance_freqs,
+            return_periods,
             imp.at_event
         )
     ]
@@ -392,7 +424,7 @@ def plot_sectoral_exceedances(all_rp_data, sector_comparison_plot_path, figsize,
     exp_type_list = set(exp_type_list) - set(['economic_assets'])
 
     _, axis = plt.subplots(1, 1, figsize=figsize)
-    axis.set_xlabel("Return period (year)")
+    axis.set_xlabel("Return period (years)")
     imp_unit = "%"
     axis.set_ylabel(f"{imp_unit}")
 
@@ -400,14 +432,20 @@ def plot_sectoral_exceedances(all_rp_data, sector_comparison_plot_path, figsize,
 
     for i, exp_type in enumerate(exp_type_list):
         curves = plot_rp_data[plot_rp_data['exposure_type'] == exp_type]
-        curves['rp'] = 1/curves['frequency']
         if rp_max is None:
-            rp_max = max(curves['rp'])
+            rp_max = max(curves['return_period'])
         axis.set_xlim(1, rp_max)
         scenario = "present"
-        
-        scenario_mean = curves.groupby('frequency')['impact_fraction'].agg('mean')
-        scenario_aal = calc_aal(impact=scenario_mean.values, frequency=scenario_mean.index.values)
+
+        scenario_grouped = curves.groupby('exceedance_frequency').agg(
+            impact_fraction=('impact_fraction', 'mean'),
+            event_frequency=('event_frequency', 'sum')
+        )
+        n_haz_files = curves['hazard_filepath'].nunique()
+        if n_haz_files > 1:
+            scenario_grouped['event_frequency'] /= n_haz_files
+        scenario_mean = scenario_grouped['impact_fraction']
+        scenario_aal = calc_aal(impact=scenario_grouped['impact_fraction'].values, event_frequency=scenario_grouped['event_frequency'].values)
         axis.plot(scenario_mean.index**-1, scenario_mean.values, color=COLOURS2[i], linewidth=1.5, label=exp_type.title())
         # axis.hlines(scenario_aal, xmin=1, xmax=rp_max, color=COLOURS[scenario]['normal'], linestyle='--', linewidth=1)
         # axis.plot(1, scenario_aal, marker='s', color=COLOURS[scenario]['normal'], markersize=4, label=f"AAL modelled: {float('%.3g' % scenario_aal)}")
