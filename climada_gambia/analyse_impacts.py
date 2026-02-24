@@ -57,7 +57,7 @@ def analyse_impf_exceedance(impf_dict: MetadataImpact, scenario=None, make_plots
         overwrite: Whether to overwrite existing files
     """
     if scenario is None:
-        scenario_list = list(impf_dict["hazard_node"].keys())
+        scenario_list = list(impf_dict["scenarios"])
     else:
         scenario_list = scenario
 
@@ -192,7 +192,7 @@ def one_exceedance_plot(
         
         # Plot exceedance curves
         if scenario_list is None:
-            scenario_list = impf_dict["hazard_node"].keys()
+            scenario_list = impf_dict["scenarios"]
 
         for scenario in scenario_list:
             scenario_df = curves[curves['scenario'] == scenario]
@@ -283,7 +283,7 @@ def get_impf_exceedance_curves(impf_dict: dict, scenario_list: list, impact_type
         curves = curves[curves['scenario'].isin(scenario_list) & curves['impact_type'].isin(impact_type_list)]
         return curves
 
-    scenario_list_all = list(impf_dict["hazard_node"].keys())
+    scenario_list_all = list(impf_dict["scenarios"])
     if scenario_list is None:
         scenario_list = scenario_list_all
 

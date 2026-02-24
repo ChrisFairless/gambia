@@ -30,7 +30,7 @@ class MetadataImpact(MetadataConfig):
         # From config.py impact_functions
         'dir', 'files', 'thresholds', 'scale_x', 'scale_y', 'enabled',
         # Added programmatically
-        'analysis_name', 'hazard_abbr', 'exposure_node', 'hazard_node',
+        'analysis_name', 'hazard_abbr', 'exposure_node', 'hazard_node', 'scenarios',
         # Added during calculation/analysis
         'scores'
     }
@@ -78,6 +78,7 @@ class MetadataImpact(MetadataConfig):
         impf['exposure_node'] = CONFIG.get("exposures", {}).get(
             impf['exposure_type'], {}).get(impf['exposure_source'], {}).get("present", {})
         impf['hazard_node'] = CONFIG.get("hazard", {}).get(hazard_type, {}).get(hazard_source, {})
+        impf["scenarios"] = list(impf['hazard_node'].keys()) if impf['hazard_node'] else []
         
         # Add total exposed values to exposure node
         if 'exposure_node' in impf and impf['exposure_node']:
@@ -230,6 +231,11 @@ class MetadataImpact(MetadataConfig):
     def hazard_node(self) -> Optional[Dict]:
         """Configuration node for this hazard from CONFIG."""
         return self._data.get("hazard_node")
+
+    @property
+    def scenarios(self) -> List[str]:
+        """List of scenarios available for this impact function, derived from hazard node."""
+        return self._data.get("scenarios")
     
     @property
     def exposure_node(self) -> Optional[Dict]:
