@@ -324,8 +324,9 @@ def run_one_parameter_combo(parameters, impf_dict_in, overwrite=True):
     
     if not SAVE_SEARCH_IMPACTS:
         haz_filepath = Path(impf_dict["hazard_node"]["present"]["files"])
-        impacts_path = impf_dict.impact_file_path(hazard_file_stem=haz_filepath.stem, impact_type=impf_dict["impact_type"], create=False)
-        os.remove(impacts_path)
+        impacts_dir = impf_dict.impact_output_dir(create=False)
+        _ = [os.remove(impacts_path) for impacts_path in impacts_dir.glob("*.hdf5")]
+        _ = [os.remove(impacts_path) for impacts_path in impacts_dir.glob("*.h5")]
 
     return pd.DataFrame(results_list)
 
