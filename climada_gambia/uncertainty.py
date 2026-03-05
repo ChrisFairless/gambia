@@ -212,7 +212,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
     df_all, df_aai_all = gather_uncertainty_results(impf_dict_list, quantiles=quantiles, normalise_by_exposure=False)
     df_all_norm, df_aai_all_norm = gather_uncertainty_results(impf_dict_list, quantiles=quantiles, normalise_by_exposure=True)
 
-    total_exposed_ratio = get_total_exposed_ratio(impf_dict_list)
+    sector_sizes_df, total_exposed_ratio = get_total_exposed_ratio(impf_dict_list)
     print(f"Using an adjustment factor of {total_exposed_ratio:.2f} to normalise impacts to match LitPop")
 
     impf_dict_all = {
@@ -481,7 +481,7 @@ def get_total_exposed_ratio(impf_dict_list: list):
     total_exposed_litpop = get_total_exposed_value('economic_assets', usd=True)
     total_exposed_ratio = total_exposed_litpop / sector_sizes_df['total_exposed'].sum()
     assert np.isclose(sum(sector_sizes_df['weight']), 1.0), "Sector weights do not sum to 1.0"
-    return total_exposed_ratio
+    return sector_sizes_df, total_exposed_ratio
 
 
 def gather_uncertainty_results(impf_dict_list: list, quantiles: tuple=(0.1, 0.9), normalise_by_exposure: bool = True):
