@@ -28,7 +28,7 @@ overwrite = True
 COLOURS = {
     'present': {
         'strong': 'black',
-        'normal': 'lightgrey'
+        'normal': 'grey'
     },
     'RCP4.5_2050': {
         'strong': 'darkorange',
@@ -39,7 +39,7 @@ COLOURS = {
         'normal': 'pink'
     },
     'observations': {
-        'strong': ['mediumblue', 'royalblue', 'teal'],
+        'strong': ['cornflowerblue', 'turquoise', 'mediumseagreen'],
         'normal': 'lightblue'
     }
 }
@@ -212,17 +212,51 @@ def one_exceedance_plot(
             n_lines = scenario_df[['hazard_filepath', 'rp_level']].nunique().values[0]
 
             if n_lines <= 5:
-                axis.fill_between(scenario_mean.index**-1, range_min, range_max, color=COLOURS[scenario]['normal'], alpha=0.2, label='Uncertainty range')
                 range_min = scenario_df.groupby(['exceedance_frequency']).agg({plot_var: 'min'}).reset_index()[plot_var].values
                 range_max = scenario_df.groupby(['exceedance_frequency']).agg({plot_var: 'max'}).reset_index()[plot_var].values
+                axis.fill_between(
+                    scenario_mean.index**-1,
+                    range_min,
+                    range_max,
+                    color=COLOURS[scenario]['normal'],
+                    alpha=0.2,
+                    label='Range of hazard model uncertainty'
+                )
             else:
-                axis.fill_between(scenario_mean.index**-1, quantile_0_2, quantile_0_8, color=COLOURS[scenario]['normal'], alpha=0.2, label='80% uncertainty range')
-
-            axis.plot(scenario_mean.index**-1, scenario_mean.values, color=COLOURS[scenario]['strong'], linewidth=2, label=f'Exceedance: {scenario}')
                 quantile_0_2 = scenario_df.groupby(['exceedance_frequency'])[plot_var].quantile(0.2).values
                 quantile_0_8 = scenario_df.groupby(['exceedance_frequency'])[plot_var].quantile(0.8).values
-            axis.hlines(scenario_aal, xmin=1, xmax=rp_max, color=COLOURS[scenario]['normal'], linestyle='--', linewidth=1)
-            axis.plot(1, scenario_aal, marker='s', color=COLOURS[scenario]['normal'], markersize=4, label=f"AAL modelled: {float('%.3g' % scenario_aal)}")
+                axis.fill_between(
+                    scenario_mean.index**-1,
+                    quantile_0_2,
+                    quantile_0_8,
+                    color=COLOURS[scenario]['normal'],
+                    alpha=0.2,
+                    label='60% uncertainty range'
+                )
+
+            axis.plot(
+                scenario_mean.index**-1,
+                scenario_mean.values,
+                color=COLOURS[scenario]['strong'],
+                linewidth=2,
+                label=f'Exceedance: {scenario}'
+            )
+            axis.hlines(
+                scenario_aal,
+                xmin=1,
+                xmax=rp_max,
+                color=COLOURS[scenario]['normal'],
+                linestyle='solid',
+                linewidth=1,
+                label=f"AAL modelled: {float('%.3g' % scenario_aal)}"
+            )
+            # axis.plot(
+            #     1,
+            #     scenario_aal,
+            #     marker='s',
+            #     color=COLOURS[scenario]['normal'],
+            #     markersize=4,
+            # )
 
         # plot observations    
         observations = None
@@ -236,8 +270,10 @@ def one_exceedance_plot(
 
             if plot_var == "impact":
                 obs_var = 'value'
-            if plot_var == "impact_fraction":
+            elif plot_var == "impact_fraction":
                 obs_var = 'value_fraction'
+            else:
+                raise ValueError(f"Unexpected value of plot_var: {plot_var}")
 
             original_exposure_types = observations['original_exposure_type'].unique()
             n_colours = len(original_exposure_types)
@@ -251,25 +287,63 @@ def one_exceedance_plot(
                     rp_mid = row['rp_mid']
                     rp_upper = row['rp_upper']
                     value = row[obs_var]
-                    axis.plot([rp_lower, rp_upper], [value, value], color=COLOURS['observations']['strong'][i], linestyle='--', linewidth=1)
-                    axis.plot(rp_mid, value, marker='o', color=COLOURS['observations']['strong'][i], markersize=4, label=f"Observation: {obs_exposure_type}")
+                    axis.plot(
+                        [rp_lower, rp_upper],
+                        [value, value],
+                        color=COLOURS['observations']['strong'][i],
+                        linestyle='dashed',
+                        linewidth=1
+                    )
+                    axis.plot(
+                        rp_mid,
+                        value,
+                        marker='o',
+                        color=COLOURS['observations']['strong'][i],
+                        markersize=4,
+                        label=f"Observation ({obs_exposure_type})"
+                    )
             
             # Plot AALs we want to compare to
             observations_aal = observations[ix_aal]
             for i, obs_exposure_type in enumerate(original_exposure_types):
-                observations_aal_subset = observations_aal[observations_aal['exposure_type'] == obs_exposure_type]
+                observations_aal_subset = observations_aal[observations_aal['original_exposure_type'] == obs_exposure_type]
                 for _, row in observations_aal_subset.iterrows():
                     value = row[obs_var]
-                    axis.hlines(value, xmin=1, xmax=rp_max, color=COLOURS['observations']['normal'], linestyle='--', linewidth=1)
-                    axis.plot(1, value, marker='s', color=COLOURS['observations']['normal'], markersize=4, label=f"AAL observation: {float('%.3g' % value)}")
+                    axis.hlines(
+                        value,
+                        xmin=1,
+                        xmax=rp_max,
+                        color=COLOURS['observations']['strong'][i],
+                        linestyle='solid',
+                        linewidth=1,
+                        label=f"AAL literature ({obs_exposure_type}): {float('%.3g' % value)}"
+                    )
+                    # axis.plot(
+                    #     1,
+                    #     value,
+                    #     marker='s',
+                    #     color=COLOURS['observations']['strong'][i],
+                    #     markersize=4,
+                    # )
         
             # Plot RP curves as observations
             observations_rp = observations[ix_rp]
-            for i, obs_exposure_type in enumerate(observations_rp['exposure_type'].unique()):
-                observations_rp_subset = observations_rp[observations_rp['exposure_type'] == obs_exposure_type]
-                axis.plot(observations_rp_subset['rp_mid'], observations_rp_subset[obs_var], color=COLOURS['observations']['strong'][i], linestyle='--', linewidth=1, label=f'RP curve prior')
+            for i, obs_exposure_type in enumerate(original_exposure_types):
+                observations_rp_subset = observations_rp[observations_rp['original_exposure_type'] == obs_exposure_type]
+                if observations_rp_subset.shape[0] > 0:
+                    axis.plot(
+                        observations_rp_subset['rp_mid'],
+                        observations_rp_subset[obs_var],
+                        color=COLOURS['observations']['strong'][i],
+                        linestyle='dotted',
+                        linewidth=1,
+                        label=f'RP curve prior ({obs_exposure_type})'
+                    )
 
-        axis.legend(loc="lower right")
+        # Remove duplicate legend entries and add legend
+        handles, labels = axis.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        axis.legend(by_label.values(), by_label.keys(), loc="lower right")
 
     plt.savefig(exceedance_plot_path)
     plt.close(axis.figure)
