@@ -361,13 +361,12 @@ def main(analysis_name: str, overwrite: bool, scale_impacts: bool) -> None:
         raise FileNotFoundError(f'Please create an output directory at {output_dir}')
 
     # Gather all impact calculations:
-    impf_list = utils_config.gather_impact_calculation_metadata()
+    impf_list = utils_config.gather_impact_calculation_metadata(analysis_name=analysis_name)
 
     print(f"=== Running analysis: {analysis_name} ===")
 
     for impf_dict_analysis in impf_list:
         impf_dict = copy.deepcopy(impf_dict_analysis)
-        impf_dict['analysis_name'] = analysis_name
 
         print("-----------------------------------------------------")
         print(f"Calculating impacts for {impf_dict['exposure_type']}: {impf_dict['exposure_source']} - {impf_dict['hazard_type']}: {impf_dict['hazard_source']}")

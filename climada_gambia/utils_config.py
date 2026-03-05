@@ -7,6 +7,7 @@ def gather_impact_calculation_metadata(filter: dict = {}, analysis_name: str = N
     
     Args:
         filter: Dictionary of key-value pairs to filter impact calculations to matching values
+        analysis_name: Name of the analysis
         
     Returns:
         List of MetadataImpact instances
