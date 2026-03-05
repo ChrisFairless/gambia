@@ -185,7 +185,7 @@ def run_uncertainty_analysis(impf_dict: MetadataImpact, n_simulations: int = N_S
         impf_iv = InputVar(generate_impf_sets, impact_scaling_distr)
 
         calc_imp = CalcImpact(exp, impf_iv, haz_iv)
-        output_imp = calc_imp.make_sample(N=N_SIMULATIONS, sampling_kwargs={"skip_values": 2**8})
+        output_imp = calc_imp.make_sample(N=N_SIMULATIONS, sampling_kwargs={"skip_values": 2*N_SIMULATIONS})
         n_processes = PARALLELISE if PARALLELISE is not None else 1
 
         print(f"Running uncertainty analysis for scenario: {scenario}")
