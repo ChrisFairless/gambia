@@ -503,8 +503,8 @@ class MetadataImpact(MetadataConfig):
         output_dir = self.insurance_results_dir(create=create)
         return {
             "csv": Path(output_dir, f"insurance_{scenario}.csv"),
-            "plot": Path(output_dir, f"plot_insurance_{scenario}.png"),
-            "rps": Path(output_dir, f"plot_insurance_rps_{scenario}.png")
+            "plot_curve": Path(output_dir, f"plot_insurance_curve_{scenario}.png"),
+            "plot_policy_space": Path(output_dir, f"plot_policy_space_{scenario}.png")
         }
     
 

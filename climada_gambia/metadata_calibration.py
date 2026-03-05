@@ -64,6 +64,8 @@ class MetadataCalibration(MetadataConfig):
             'present_comparison': Path(working_dir, "plot_present_comparison.png"),
             'future_comparison': Path(working_dir, "plot_future_comparison.png"),
             'waterfall': Path(working_dir, "plot_waterfall.png"),
+            'insurance_curve': Path(working_dir, "plot_insurance_curve.png"),
+            'insurance_parameter_space': Path(working_dir, "plot_insurance_space.png")
         }
         path = Path(working_dir, f'calibrated_impf_{rp_level}.csv')
         return path
