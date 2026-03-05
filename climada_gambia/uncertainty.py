@@ -229,7 +229,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
     if os.path.exists(out_path) and not overwrite:
         print(f"Present-day comparison plot already exists at {out_path} and overwrite=False, skipping plotting.")
     else:
-        fig, axes = plt.subplots(ncols=2, nrows=len(impf_dict_list)//2, figsize=(10, 3*len(impf_dict_list)//2))
+        fig, axes = plt.subplots(ncols=2, nrows=len(impf_dict_list)//2, figsize=(15, 3.5*len(impf_dict_list)//2))
         axes = axes.flatten()
         if YMAX is None:
             ymax = df_all_norm[
@@ -239,6 +239,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
         else:
             ymax = YMAX
         for ax, impf_dict in zip(axes, impf_dict_list):
+            scaling = 100  # for percentages
             exposure_type = impf_dict['exposure_type']
             if exposure_type == 'all':
                 df_exp = df_all_norm[
@@ -257,8 +258,14 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     (df_all_norm['scenario'] == 'present') & 
                     (df_all_norm['rp'] <= 100)
                 ].sort_values('rp')
-            ax.fill_between(df_exp['rp'], df_exp['low'], df_exp['high'], color='blue', alpha=0.3, label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range')
-            ax.plot(df_exp['rp'], df_exp['median'], color='black', label=f'Median')
+            ax.fill_between(
+                df_exp['rp'],
+                scaling * df_exp['low'],
+                scaling * df_exp['high'],
+                color='blue',
+                alpha=0.3,
+                label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range')
+            ax.plot(df_exp['rp'], scaling * df_exp['median'], color='black', label=f'Median')
             # ax.axhline(aal, color='blue', linestyle='--')
             ax.set_ylim(0, ymax)
             ax.set_xlabel('Return Period (years)')
@@ -276,7 +283,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
     if os.path.exists(out_path) and not overwrite:
         print(f"Present vs future comparison plot already exists at {out_path} and overwrite=False, skipping plotting.")
     else:
-        fig, axes = plt.subplots(ncols=2, nrows=len(impf_dict_list)//2, figsize=(10, 3*len(impf_dict_list)//2))
+        fig, axes = plt.subplots(ncols=2, nrows=len(impf_dict_list)//2, figsize=(15, 4.5*len(impf_dict_list)//2))
         axes = axes.flatten()
         if YMAX is None:
             ymax = df_all_norm[
@@ -301,8 +308,15 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     (df_all_norm['scenario'] == 'present') & 
                     (df_all_norm['rp'] <= 100)
                 ].sort_values('rp')
-            ax.fill_between(df_exp['rp'], df_exp['low'], df_exp['high'], color='blue', alpha=0.3, label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range (present)')
-            ax.plot(df_exp['rp'], df_exp['median'], color='black', label=f'Median (present)')
+            ax.fill_between(
+                df_exp['rp'],
+                scaling * df_exp['low'],
+                scaling * df_exp['high'],
+                color='blue',
+                alpha=0.3, 
+                label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range (present)'
+            )
+            ax.plot(df_exp['rp'], scaling * df_exp['median'], color='black', label=f'Median (present)')
             # ax.axhline(aal, color='blue', label='AAL (present)', linestyle='--')
 
             # Future
@@ -321,8 +335,15 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     (df_all_norm['rp'] <= 100)
                 ].sort_values('rp')
             df_exp = df_exp[df_exp['rp'] >= 0]
-            ax.fill_between(df_exp['rp'], df_exp['low'], df_exp['high'], color='gold', alpha=0.5, label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range (RCP8.5 2050)')
-            ax.plot(df_exp['rp'], df_exp['median'], color='darkorange', label=f'Median (RCP8.5 2050)')
+            ax.fill_between(
+                df_exp['rp'],
+                scaling * df_exp['low'],
+                scaling * df_exp['high'],
+                color='gold',
+                alpha=0.5,
+                label=f'{quantiles[0]*100}-{quantiles[1]*100}th percentile range (RCP8.5 2050)'
+            )
+            ax.plot(df_exp['rp'], scaling * df_exp['median'], color='darkorange', label=f'Median (RCP8.5 2050)')
             # ax.axhline(aal, color='darkorange', label='AAL (RCP8.5 2050)', linestyle='--')
 
             ax.set_ylim(0, ymax)
@@ -342,7 +363,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
     if os.path.exists(out_path) and not overwrite:
         print(f"Present vs future comparison plot already exists at {out_path} and overwrite=False, skipping plotting.")
     else:
-        fig, axes = plt.subplots(ncols=2, nrows=len(impf_dict_list)//2, figsize=(10, 3*len(impf_dict_list)//2))
+        fig, axes = plt.subplots(ncols=2, nrows=len(impf_dict_list)//2, figsize=(15, 4.5*len(impf_dict_list)//2))
         axes = axes.flatten()
         for ax, impf_dict in zip(axes, impf_dict_list):
             exposure_type = impf_dict['exposure_type']
@@ -371,7 +392,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
 
             present_year = 2025
             future_year = 2050
-            norm_fact = 1e6
+            norm_fact = 1e3
             ax.bar(
                 1,
                 curr_risk / norm_fact,
@@ -381,7 +402,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
             ax.text(
                 1,
                 curr_risk / norm_fact,
-                str(f"{curr_risk / norm_fact:.1f}"),
+                f"{curr_risk / norm_fact:,.0f}",
                 horizontalalignment="center",
                 verticalalignment="bottom",
                 fontsize=12,
@@ -397,7 +418,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
             ax.text(
                 2,
                 curr_risk / norm_fact + (risk_dev - curr_risk) / norm_fact / 2,
-                str(f"{(risk_dev - curr_risk) / norm_fact:.1f}"),
+                str(f"{(risk_dev - curr_risk) / norm_fact:,.0f}"),
                 horizontalalignment="center",
                 verticalalignment="center",
                 fontsize=12,
@@ -413,7 +434,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
             ax.text(
                 3,
                 risk_dev / norm_fact + (fut_risk - risk_dev) / norm_fact / 2,
-                str(f"{(fut_risk - risk_dev) / norm_fact:.1f}"),
+                str(f"{(fut_risk - risk_dev) / norm_fact:,.0f}"),
                 horizontalalignment="center",
                 verticalalignment="center",
                 fontsize=12,
@@ -427,7 +448,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
             ax.text(
                 4,
                 fut_risk / norm_fact,
-                str(f"{fut_risk / norm_fact:.1f}"),
+                str(f"{fut_risk / norm_fact:,.0f}"),
                 horizontalalignment="center",
                 verticalalignment="bottom",
                 fontsize=12,
@@ -443,7 +464,7 @@ def plot_uncertainty_analyses(impf_dict_list: list, quantiles: tuple=(0.1, 0.9),
                     "Risk " + str(future_year),
                 ]
             )
-            ax.set_ylabel("Impact (millions USD)")
+            ax.set_ylabel("Impact (thousands USD)")
             ax.set_title(f'{exposure_type.title()}')
 
         ax.legend()
@@ -494,10 +515,10 @@ def gather_uncertainty_results(impf_dict_list: list, quantiles: tuple=(0.1, 0.9)
             else:
                 norm = 1
 
-            u_mean = 100 * uncertainty_df.mean() / norm
-            u_median = 100 * uncertainty_df.quantile(0.5) / norm
-            u_low = 100 * uncertainty_df.quantile(quantiles[0]) / norm
-            u_high = 100 * uncertainty_df.quantile(quantiles[1]) / norm
+            u_mean = uncertainty_df.mean() / norm
+            u_median = uncertainty_df.quantile(0.5) / norm
+            u_low = uncertainty_df.quantile(quantiles[0]) / norm
+            u_high = uncertainty_df.quantile(quantiles[1]) / norm
 
             df = pd.DataFrame({
                 'exposure_type': impf_dict['exposure_type'],
@@ -514,10 +535,10 @@ def gather_uncertainty_results(impf_dict_list: list, quantiles: tuple=(0.1, 0.9)
             partial_calc_aal = partial(calc_aal, event_frequency=event_frequency)
             aai = uncertainty_df.apply(partial_calc_aal, axis=1)
             assert np.allclose(aai, uncertainty_aai.values), "Calculated AAI does not match AAI in uncertainty results file, check calculations"
-            aai_mean = 100 * aai.mean() / norm
-            aai_median = 100 * aai.quantile(0.5) / norm
-            aai_low = 100 * aai.quantile(quantiles[0]) / norm
-            aai_high = 100 * aai.quantile(quantiles[1]) / norm
+            aai_mean = aai.mean() / norm
+            aai_median = aai.quantile(0.5) / norm
+            aai_low = aai.quantile(quantiles[0]) / norm
+            aai_high = aai.quantile(quantiles[1]) / norm
             df_aai = {
                 'exposure_type': impf_dict['exposure_type'],
                 'scenario': scenario,
