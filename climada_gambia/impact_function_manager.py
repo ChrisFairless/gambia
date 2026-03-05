@@ -130,9 +130,11 @@ class ImpactFunctionManager:
             ImpactFuncSet containing the step function.
         """
         # Calculate the intensity at which the given damage threshold occurs
+        impacts = impf.calc_mdr(impf.intensity)
+        assert np.array_equal(impacts, np.sort(impacts)), "This code only works with monotonically increasing impact functions"
         threshold_intensity = np.interp(
             threshold, 
-            impf.calc_mdr(impf.intensity), 
+            impacts, 
             impf.intensity
         )
         

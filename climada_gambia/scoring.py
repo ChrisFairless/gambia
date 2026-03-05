@@ -139,11 +139,18 @@ def calc_aal_trapezoidal(impact, exceedance_frequency):
     impact = np.asarray(impact, dtype=float)
     exceedance_frequency = np.asarray(exceedance_frequency, dtype=float)
     assert np.all(exceedance_frequency > 0), "Exceedance frequencies must be positive"
+    ix = np.argmin(exceedance_frequency)
+    assert impact[np.argmax(impact)] == impact[ix], "Lowest exceedance frequency should correspond to highest impact"
 
     # Sort by exceedance frequency descending (most frequent / lowest RP first)
-    sort_idx = np.argsort(exceedance_frequency)[::-1]
-    exc_sorted = exceedance_frequency[sort_idx]
-    imp_sorted = impact[sort_idx]
+    if np.all(np.diff(exceedance_frequency) < 0):
+        exc_sorted = exceedance_frequency
+        imp_sorted = impact
+    elif np.all(np.diff(exceedance_frequency) > 0):
+        exc_sorted = exceedance_frequency[::-1]
+        imp_sorted = impact[::-1]
+    else:
+        raise ValueError("Exceedance frequencies must be either strictly increasing or strictly decreasing")
 
     # Assumption: impacts are constant beyond the rarest modelled event, so we can append a final point at (exceedance_freq=0, impact=imp_sorted[-1])
     exc_sorted = np.append(exc_sorted, 0)
@@ -386,6 +393,7 @@ class ScoringEngine:
         impact_curve = scenario_mean.values
         
         # Reverse arrays for interpolation (np.interp requires increasing x values)
+        assert np.array_equal(rp_curve[::-1], np.sort(rp_curve)), "Return periods must be in ascending order for interpolation"
         return np.interp(return_periods, rp_curve[::-1], impact_curve[::-1])
     
     def _calculate_cost(self, modelled_value: float, observed_value: float) -> float:
