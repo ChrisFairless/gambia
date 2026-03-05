@@ -29,26 +29,26 @@ INSURED_EXPOSURE = "economic_assets"
 
 #===============================================================================
 
-def build_impf_dict():
-    impf_dict = utils_config.gather_impact_calculation_metadata(filter={'exposure_type': INSURED_EXPOSURE}, analysis_name=ANALYSIS_NAME)[0]
-    analysis_name_full = f"{ANALYSIS_NAME}/{impf_dict['exposure_type']}_{impf_dict['exposure_source']}"
+def build_impf_dict(insured_exposure, analysis_name):
+    impf_dict = utils_config.gather_impact_calculation_metadata(filter={'exposure_type': insured_exposure}, analysis_name=analysis_name)[0]
+    analysis_name_full = f"{analysis_name}/{impf_dict['exposure_type']}_{impf_dict['exposure_source']}"
     impf_dict = MetadataImpact(impf_dict=impf_dict, analysis_name=analysis_name_full)
     return impf_dict
 
-def evaluate_insurance_policies():
-    print(f"Running insurance calculations for analysis: {ANALYSIS_NAME}")
+def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_policies):
+    print(f"Running insurance calculations for analysis: {analysis_name}")
 
-    assert np.all(INSURANCE_POLICIES["attachment_rp_vals"] < INSURANCE_POLICIES["exhaustion_rp"]), "Attachment RPs must be less than exhaustion RP"
-    assert np.all(INSURANCE_POLICIES["attachment_rp_vals"] >= 2), "Attachment RPs must be greater than or equal to 2"
-    assert np.all(INSURANCE_POLICIES["attachment_rp_vals"] <= 1000), "Attachment RPs must be less than or equal to 1000"
-    assert INSURANCE_POLICIES["exhaustion_rp"] >= 2, "Exhaustion RP must be greater than or equal to 2"
-    assert INSURANCE_POLICIES["exhaustion_rp"] <= 1000, "Exhaustion RP must be less than or equal to 1000"
+    assert np.all(insurance_policies["attachment_rp_vals"] < insurance_policies["exhaustion_rp"]), "Attachment RPs must be less than exhaustion RP"
+    assert np.all(insurance_policies["attachment_rp_vals"] >= 2), "Attachment RPs must be greater than or equal to 2"
+    assert np.all(insurance_policies["attachment_rp_vals"] <= 1000), "Attachment RPs must be less than or equal to 1000"
+    assert insurance_policies["exhaustion_rp"] >= 2, "Exhaustion RP must be greater than or equal to 2"
+    assert insurance_policies["exhaustion_rp"] <= 1000, "Exhaustion RP must be less than or equal to 1000"
     
     # In this first approach, we only use output from the uncertainty simulations for the economic assets sector.
     # We might get a better view of the uncertainty if we combined all sectors and scaled to LitPop, but we'd have to do 
     # that carefully, avoiding uncertainties cancelling each other out when they're combined (as we did in some of the
     # plotting in the uncertainty analysis).
-    impf_dict = build_impf_dict()
+    impf_dict = build_impf_dict(insured_exposure=insured_exposure, analysis_name=analysis_name)
     impf_dict_calibrated = MetadataImpact(impf_dict=impf_dict, analysis_name=f"{impf_dict['analysis_name']}/calibrated_mid")
 
     for scenario in impf_dict["scenarios"]:
@@ -82,7 +82,7 @@ def evaluate_insurance_policies():
         rp = pd.Series([float(s[2:len(s)+1]) for s in uncertainty_df.columns])
         assert np.allclose(exceedance_frequency, 1/rp), "Exceedance frequencies calculated from RP column names do not match exceedance frequencies in the calibrated curve. This is unexpected"
 
-        exhaustion_frequency = 1/INSURANCE_POLICIES["exhaustion_rp"]
+        exhaustion_frequency = 1/insurance_policies["exhaustion_rp"]
 
         # We have to choose our 'best estimate' of AAI and other variables to set the prices under uncertainty.
         # There are a few ways we could do this, and maybe we'll compare them in later work
@@ -117,7 +117,7 @@ def evaluate_insurance_policies():
 
         # Now we test how each policy perform under different attachment RPs and rates on line 
         results = []
-        for attachment_rp in INSURANCE_POLICIES["attachment_rp_vals"]:
+        for attachment_rp in insurance_policies["attachment_rp_vals"]:
             attachment_frequency = 1/attachment_rp
             pricing_attachment = np.interp(attachment_frequency, exceedance_frequency, pricing_rp_losses)
             
@@ -153,7 +153,7 @@ def evaluate_insurance_policies():
             uncertainty_retained = uncertainty_df.apply(partial_retained_evaluation, axis=1)
             mean_retained = uncertainty_retained.mean()
 
-            for rate_on_line in INSURANCE_POLICIES["rate_on_line_vals"]:        
+            for rate_on_line in insurance_policies["rate_on_line_vals"]:        
                 premium = (1 + rate_on_line) * pricing_expected_payout
                 profits = premium - uncertainty_payouts
                 profits_ratio = profits / premium
@@ -163,7 +163,7 @@ def evaluate_insurance_policies():
                 results.append({
                     "attachment_rp": attachment_rp,
                     "attachment": pricing_attachment,
-                    "exhaustion_rp": INSURANCE_POLICIES["exhaustion_rp"],
+                    "exhaustion_rp": insurance_policies["exhaustion_rp"],
                     "exhaustion": pricing_exhaustion,
                     "rate_on_line": rate_on_line,
                     "premium": premium,
@@ -179,6 +179,8 @@ def evaluate_insurance_policies():
         output_paths = impf_dict.insurance_results_paths(scenario=scenario, create=True)
         results = pd.DataFrame(results)
         results.to_csv(output_paths["csv"], index=False)
+    
+    return results
 
 
 def add_to_rp_series(impacts, f, rp):
@@ -227,10 +229,10 @@ def calc_expected_payout(impacts, exceedance_frequencies, attachment, exhaustion
     return expected_impact
 
 
-def plot_example_result():
+def plot_example_result(policy=EXAMPLE_POLICY, insured_exposure=INSURED_EXPOSURE, analysis_name=ANALYSIS_NAME):
     print("Plotting example insurance policy result")
     plot_scenario = "present"
-    impf_dict = build_impf_dict()
+    impf_dict = build_impf_dict(insured_exposure=insured_exposure, analysis_name=analysis_name)
     output_paths = impf_dict.insurance_results_paths(scenario=plot_scenario, create=False)
     results_df = pd.read_csv(output_paths["csv"])
 
@@ -243,9 +245,9 @@ def plot_example_result():
 
 
     example_policy_df = results_df[
-        (results_df['attachment_rp'] == EXAMPLE_POLICY['attachment_rp']) &
-        (results_df['exhaustion_rp'] == EXAMPLE_POLICY['exhaustion_rp']) &
-        (results_df['rate_on_line'] == EXAMPLE_POLICY['rate_on_line'])
+        (results_df['attachment_rp'] == policy['attachment_rp']) &
+        (results_df['exhaustion_rp'] == policy['exhaustion_rp']) &
+        (results_df['rate_on_line'] == policy['rate_on_line'])
     ]
     assert len(example_policy_df) == 1, "Example policy parameters do not uniquely identify a single policy in the results"
     example_policy_result = example_policy_df.iloc[0]
@@ -294,9 +296,9 @@ def plot_example_result():
     plt.close(axis.figure)
 
 
-def plot_policy_space():
+def plot_policy_space(insured_exposure=INSURED_EXPOSURE, analysis_name=ANALYSIS_NAME):
     print("Plotting insurance policy parameter space")
-    impf_dict = build_impf_dict()
+    impf_dict = build_impf_dict(insured_exposure=insured_exposure, analysis_name=analysis_name)
     scenarios = impf_dict["scenarios"]
     output_paths_dict = {
         plot_scenario: impf_dict.insurance_results_paths(scenario=plot_scenario, create=False)
@@ -446,10 +448,10 @@ def plot_policy_space():
     plt.close(fig)
 
 
-def main():
-    _ = evaluate_insurance_policies()
-    _ = plot_example_result()
-    _ = plot_policy_space()
+def main(insurance_policies=INSURANCE_POLICIES, insured_exposure=INSURED_EXPOSURE, analysis_name=ANALYSIS_NAME):
+    _ = evaluate_insurance_policies(insurance_policies=insurance_policies, insured_exposure=insured_exposure, analysis_name=analysis_name)
+    _ = plot_example_result(insured_exposure=insured_exposure, analysis_name=analysis_name)
+    _ = plot_policy_space(insured_exposure=insured_exposure, analysis_name=analysis_name)
     
 
 if __name__ == "__main__":
