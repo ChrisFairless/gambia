@@ -108,7 +108,7 @@ def validate_layer_chain(resolved_layers):
     Args:
         resolved_layers (list[dict]): layer dicts that already contain
             ``'_resolved_attachment'`` and ``'_resolved_exhaustion'`` keys
-            (set by :func:`evaluate_insurance_layers`).
+            (set by :func:`complete_insurance_layers`).
     """
     for i in range(len(resolved_layers) - 1):
         current = resolved_layers[i]
@@ -157,8 +157,8 @@ def add_retained_tail_risk_layer(resolved_layers, max_modelled_loss):
     return resolved_layers
 
 
-def evaluate_insurance_layers(layers, exceedance_frequencies, impacts):
-    """Evaluate a list of insurance layers against an exceedance curve.
+def complete_insurance_layers(layers, exceedance_frequencies, impacts):
+    """Complete a list of insurance layers by resolving boundaries and computing payouts.
 
     Resolves attachment and exhaustion boundaries, validates that the layer chain
     is gapless (issuing a :class:`UserWarning` if not), appends a
@@ -287,7 +287,7 @@ def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_polic
         rp = pd.Series([float(s[2:len(s)+1]) for s in uncertainty_df.columns])
         assert np.allclose(exceedance_frequency, 1/rp), "Exceedance frequencies calculated from RP column names do not match exceedance frequencies in the calibrated curve. This is unexpected"
 
-        exhaustion_frequency = 1/insurance_policies["exhaustion_rp"]
+        exhaustion_rp = insurance_policies["exhaustion_rp"]
 
         # We have to choose our 'best estimate' of AAI and other variables to set the prices under uncertainty.
         # There are a few ways we could do this, and maybe we'll compare them in later work
@@ -318,9 +318,12 @@ def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_polic
             pass
 
         assert np.array_equal(exceedance_frequency, np.sort(exceedance_frequency)), "Exceedance frequencies have to be in ascending order"
-        pricing_exhaustion = np.interp(exhaustion_frequency, exceedance_frequency, pricing_rp_losses)
 
-        # Warn if there is modelled loss above the exhaustion level (retained tail risk).
+        # Resolve exhaustion once (same for all attachment/rate_on_line combos)
+        # and warn about retained tail risk.
+        pricing_exhaustion = resolve_boundary(
+            {"rp": exhaustion_rp}, exceedance_frequency, pricing_rp_losses
+        )
         max_modelled_loss = float(np.max(pricing_rp_losses))
         if (not np.isclose(pricing_exhaustion, max_modelled_loss, rtol=BOUNDARY_MATCH_RTOL)
                 and pricing_exhaustion < max_modelled_loss):
@@ -330,29 +333,57 @@ def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_polic
                 "level will be retained by the country as tail risk."
             )
 
-        # Now we test how each policy perform under different attachment RPs and rates on line 
+        # Now we test how each policy performs under different attachment RPs and rates on line.
+        # For each combination we build explicit insurance layers in the new format,
+        # resolve boundaries against the PRICING curve, and then evaluate payouts
+        # against the UNCERTAINTY simulations.
         results = []
         for attachment_rp in insurance_policies["attachment_rp_vals"]:
-            attachment_frequency = 1/attachment_rp
-            pricing_attachment = np.interp(attachment_frequency, exceedance_frequency, pricing_rp_losses)
-            
-            # Using our 'best knowledge' we pick an attachment loss based on our attachment RP 
-            pricing_expected_payout = calc_expected_payout(
-                impacts=pricing_rp_losses,
-                exceedance_frequencies=exceedance_frequency,
-                attachment=pricing_attachment,
-                exhaustion=pricing_exhaustion,
-                retained=False
+
+            # Define layers using the new format.
+            # rate_on_line is omitted here: it only affects the premium, which
+            # is computed per rate_on_line in the inner loop below.
+            insurance_layers = [
+                {
+                    "name": "National Disaster Fund",
+                    "type": "indemnity",
+                    "attachment": {"loss": 0},
+                    "exhaustion": {"rp": attachment_rp},
+                    "premium": 0,
+                },
+                {
+                    "name": "Indemnity insurance",
+                    "type": "indemnity",
+                    "attachment": {"rp": attachment_rp},
+                    "exhaustion": {"rp": exhaustion_rp},
+                    # rate_on_line set per-iteration in the inner loop
+                },
+            ]
+
+            # Complete layers using the PRICING curve to resolve boundaries
+            # and compute expected payouts.
+            completed_layers = complete_insurance_layers(
+                insurance_layers, exceedance_frequency, pricing_rp_losses
             )
 
-            # Create a function that calculates the expected payout from a simulated RP curve sampled under uncertainty, 
-            # given the attachment and exhaustion for this insurance policy. We then apply it to the uncertainty results 
-            # dataframe
+            # Extract resolved values from the completed insurance layer.
+            insurance_layer = next(
+                l for l in completed_layers if l["name"] == "Indemnity insurance"
+            )
+            pricing_attachment = insurance_layer["_resolved_attachment"]
+            pricing_exhaustion_resolved = insurance_layer["_resolved_exhaustion"]
+            pricing_expected_payout = insurance_layer["_expected_payout"]
+
+            # Evaluate uncertainty: compute per-simulation payouts using the
+            # resolved boundaries from the pricing curve.  This is intentionally
+            # different from the pricing curve – we want to see how the policy
+            # pays out under varying exceedance curves drawn from the
+            # uncertainty simulations.
             partial_payout_evaluation = partial(
                 calc_expected_payout,
                 exceedance_frequencies=exceedance_frequency,
                 attachment=pricing_attachment,
-                exhaustion=pricing_exhaustion,
+                exhaustion=pricing_exhaustion_resolved,
                 retained=False
             )
             uncertainty_payouts = uncertainty_df.apply(partial_payout_evaluation, axis=1)
@@ -362,7 +393,7 @@ def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_polic
                 calc_expected_payout,
                 exceedance_frequencies=exceedance_frequency,
                 attachment=pricing_attachment,
-                exhaustion=pricing_exhaustion,
+                exhaustion=pricing_exhaustion_resolved,
                 retained=True
             )
             uncertainty_retained = uncertainty_df.apply(partial_retained_evaluation, axis=1)
@@ -378,8 +409,8 @@ def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_polic
                 results.append({
                     "attachment_rp": attachment_rp,
                     "attachment": pricing_attachment,
-                    "exhaustion_rp": insurance_policies["exhaustion_rp"],
-                    "exhaustion": pricing_exhaustion,
+                    "exhaustion_rp": exhaustion_rp,
+                    "exhaustion": pricing_exhaustion_resolved,
                     "rate_on_line": rate_on_line,
                     "premium": premium,
                     "pricing_expected_payout": pricing_expected_payout,
@@ -388,7 +419,9 @@ def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_polic
                     "mean_profit_ratio": mean_profit / premium,
                     "profitable_fraction": profitable_fraction,
                     "mean_retained_risk": mean_retained,
-                    "mean_cost_to_country": mean_cost_to_country
+                    "mean_cost_to_country": mean_cost_to_country,
+                    "n_layers": len(completed_layers),
+                    "layer_names": ", ".join(l["name"] for l in completed_layers),
                 })
 
         output_paths = impf_dict.insurance_results_paths(scenario=scenario, create=True)
