@@ -25,10 +25,10 @@ def simple_curve():
     """A simple 5-point exceedance curve.
 
     Return periods: 2, 5, 10, 50, 100
-    Frequencies:    0.5, 0.2, 0.1, 0.02, 0.01 (ascending)
-    Losses:         0,  500, 1000, 5000, 10000
+    Frequencies:    0.01, 0.02, 0.1, 0.2, 0.5 (ascending values)
+    Losses:         10000, 5000, 1000, 500, 0
 
-    Frequencies are returned in ascending order (rarest first = lowest freq).
+    Frequencies are in ascending order: index 0 = lowest frequency = rarest event.
     """
     exceedance_frequencies = np.array([0.01, 0.02, 0.1, 0.2, 0.5])
     exceedance_losses = np.array([10000, 5000, 1000, 500, 0])
