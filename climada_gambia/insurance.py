@@ -356,7 +356,7 @@ def evaluate_insurance_policies(analysis_name, insured_exposure, insurance_polic
                     "type": "indemnity",
                     "attachment": {"rp": attachment_rp},
                     "exhaustion": {"rp": exhaustion_rp},
-                    # rate_on_line set per-iteration in the inner loop
+                    # rate_on_line omitted; premium is computed directly in the inner loop below
                 },
             ]
 
